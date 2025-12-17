@@ -26,7 +26,7 @@ public class Book {
     private String description;
     private Integer num_pages;
     private Date publication_date;
-    private String review; //review is a document
+    private ReviewEmbed review; //review is a document
     private List<String> language = new ArrayList<>();
     private List<String> images = new ArrayList<>();
     private List<String> preview = new ArrayList<>();
