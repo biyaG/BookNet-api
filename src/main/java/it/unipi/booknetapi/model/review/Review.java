@@ -1,11 +1,14 @@
 package it.unipi.booknetapi.model.review;
 
-import lombok.Data;
+
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.data.annotation.Id;
 
 import java.util.Date;
 
-@Data
+@Getter
+@Setter
 public class Review {
     @Id
     private long id;

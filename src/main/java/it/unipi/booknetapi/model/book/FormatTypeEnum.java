@@ -1,17 +1,14 @@
-package it.unipi.booknetapi.model.enums;
+package it.unipi.booknetapi.model.book;
 
 import lombok.Getter;
 
+@Getter
 public enum FormatTypeEnum {
 
     PAPERBACK( 1),
     HARDCOVER( 2);
 
-    int code;
-
-    public int getCode() {
-        return code;
-    }
+    private final int code;
 
     FormatTypeEnum(int code){
         this.code = code;
