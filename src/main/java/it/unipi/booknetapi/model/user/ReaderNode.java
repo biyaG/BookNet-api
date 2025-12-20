@@ -3,11 +3,11 @@ package it.unipi.booknetapi.model.user;
 import lombok.Data;
 
 @Data
-public class UserNode {
+public class ReaderNode {
 
     private String id;
 
-    private String mongoId;
+    private String mid;
 
     private String name;
 
