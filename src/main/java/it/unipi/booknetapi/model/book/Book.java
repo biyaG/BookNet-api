@@ -6,6 +6,7 @@ import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.review.ReviewEmbed;
 import lombok.Getter;
 import lombok.Setter;
+import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 
 import java.util.ArrayList;
@@ -16,7 +17,7 @@ import java.util.List;
 @Setter
 public class Book {
     @Id
-    private String id;
+    private ObjectId _id;
     private String isbn;
     private String isbn13;
     private String title;
@@ -28,11 +29,11 @@ public class Book {
     private List<String> language = new ArrayList<>();
     private List<String> images = new ArrayList<>();
     private List<String> preview = new ArrayList<>();
+    private List<String> publishers = new ArrayList<>();
     private List<Review> reviews = new ArrayList<>();
     private List<AuthorEmbed> authors = new ArrayList<>();
     private List<GenreEmbed> genres = new ArrayList<>();
-    private List<BookPublisher> publishers = new ArrayList<>();
-    private List<Book> similar_books = new ArrayList<>();
+    private List<BookEmbed> similar_books = new ArrayList<>();
     private List<ReviewEmbed> ratingReview = new ArrayList<>();
     private FormatTypeEnum formats;
     private SourceFromEnum source;
