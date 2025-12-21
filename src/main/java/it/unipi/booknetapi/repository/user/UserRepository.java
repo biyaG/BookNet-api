@@ -1,12 +1,15 @@
 package it.unipi.booknetapi.repository.user;
 
 import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
+import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.lib.database.*;
@@ -26,20 +29,27 @@ public class UserRepository implements UserRepositoryInterface {
 
     Logger logger = LoggerFactory.getLogger(UserRepository.class);
 
-    private final MongoManager mongoManager;
+    private final MongoClient mongoClient;
     private final MongoCollection<User> mongoCollection;
     private final Neo4jManager neo4jManager;
     private final CacheService cacheService;
+    private final MeterRegistry registry;
 
     private static final String CACHE_PREFIX = "user:";
     private static final int CACHE_TTL = 3600; // 1 hour
 
-    public UserRepository(MongoManager mongoManager, Neo4jManager neo4jManager, CacheService cacheService) {
-        // We get a collection specifically typed for 'User'
-        this.mongoManager = mongoManager;
-        this.mongoCollection = mongoManager.getDatabase().getCollection("users", User.class);
+    public UserRepository(
+            MongoClient mongoClient,
+            MongoDatabase mongoDatabase,
+            Neo4jManager neo4jManager,
+            CacheService cacheService,
+            MeterRegistry registry
+    ) {
+        this.mongoClient = mongoClient;
+        this.mongoCollection = mongoDatabase.getCollection("users", User.class);
         this.neo4jManager = neo4jManager;
         this.cacheService = cacheService;
+        this.registry = registry;
     }
 
     private static String generateCacheKey(String idUser) {
@@ -82,7 +92,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         logger.debug("Inserting user: {}", user);
 
-        try (ClientSession mongoSession = this.mongoManager.getMongoClient().startSession()) {
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
@@ -140,18 +150,20 @@ public class UserRepository implements UserRepositoryInterface {
     private void saveReaderToNeo4j(Reader reader) {
         Objects.requireNonNull(reader);
 
-        try (Session session = this.neo4jManager.getSession()) {
-            String cypher = "CREATE (r:Reader {mid: $userId, name: $userName})";
-            session.executeWrite(
-                    tx -> tx.run(
-                            cypher,
-                            parameters(
-                                    "userId", reader.getId().toHexString(),
-                                    "userName", reader.getName()
-                            )
-                    )
-            );
-        }
+        this.registry.timer("neo4j.ops", "query", "save_reader").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                String cypher = "CREATE (r:Reader {mid: $userId, name: $userName})";
+                session.executeWrite(
+                        tx -> tx.run(
+                                cypher,
+                                parameters(
+                                        "userId", reader.getId().toHexString(),
+                                        "userName", reader.getName()
+                                )
+                        )
+                );
+            }
+        });
     }
 
     /**
@@ -165,7 +177,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         logger.debug("Inserting many user: {}", users.size());
 
-        try (ClientSession mongoSession = this.mongoManager.getMongoClient().startSession()) {
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
@@ -199,14 +211,16 @@ public class UserRepository implements UserRepositoryInterface {
         }
 
         if(!noe4jBatch.isEmpty()) {
-            try (Session session = this.neo4jManager.getSession()) {
-                session.executeWrite(
-                        tx -> tx.run(
-                                "UNWIND $users as user CREATE (r:Reader {mid: user.userId, name: user.userName})",
-                                parameters("users", noe4jBatch)
-                        )
-                );
-            }
+            this.registry.timer("neo4j.ops", "query", "save_reader").record(() -> {
+                try (Session session = this.neo4jManager.getDriver().session()) {
+                    session.executeWrite(
+                            tx -> tx.run(
+                                    "UNWIND $users as user CREATE (r:Reader {mid: user.userId, name: user.userName})",
+                                    parameters("users", noe4jBatch)
+                            )
+                    );
+                }
+            });
         }
     }
 
@@ -314,7 +328,7 @@ public class UserRepository implements UserRepositoryInterface {
     public boolean delete(String idUser) {
         Objects.requireNonNull(idUser);
 
-        try(ClientSession mongoSession = this.mongoManager.getMongoClient().startSession()) {
+        try(ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
@@ -337,14 +351,16 @@ public class UserRepository implements UserRepositoryInterface {
     private void deleteUserFromNeo4j(String idUser) {
         Objects.requireNonNull(idUser);
 
-        try (Session session = this.neo4jManager.getSession()) {
-            session.executeWrite(
-                    tx -> tx.run(
-                            "OPTIONAL MATCH (r:Reader {mid: $userId}) DETACH DELETE r",
-                            parameters("userId", idUser)
-                    )
-            );
-        }
+        this.registry.timer("neo4j.ops", "query", "delete_user").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(
+                        tx -> tx.run(
+                                "OPTIONAL MATCH (r:Reader {mid: $userId}) DETACH DELETE r",
+                                parameters("userId", idUser)
+                        )
+                );
+            }
+        });
     }
 
     /**
@@ -355,7 +371,7 @@ public class UserRepository implements UserRepositoryInterface {
     public boolean deleteAll(List<String> idUsers) {
         Objects.requireNonNull(idUsers);
 
-        try (ClientSession mongoSession = this.mongoManager.getMongoClient().startSession()) {
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
@@ -379,14 +395,16 @@ public class UserRepository implements UserRepositoryInterface {
     }
 
     private void deleteUsersBatchFromNeo4j(List<String> idUsers) {
-        try (Session session = this.neo4jManager.getSession()) {
-            session.executeWrite(
-                    tx -> tx.run(
-                            "OPTIONAL MATCH (r:Reader) WHERE r.mid IN $userIds DETACH DELETE r",
-                            parameters("userIds", idUsers)
-                    )
-            );
-        }
+        this.registry.timer("neo4j.ops", "query", "delete_user").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(
+                        tx -> tx.run(
+                                "OPTIONAL MATCH (r:Reader) WHERE r.mid IN $userIds DETACH DELETE r",
+                                parameters("userIds", idUsers)
+                        )
+                );
+            }
+        });
     }
 
     /**

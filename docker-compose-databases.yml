@@ -1,0 +1,64 @@
+name: booknet-databases
+
+services:
+  # --- MongoDB (Replica Set) ---
+  mongo:
+    image: mongo
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017" # Exposed for local tools (Compass)
+    # command: ["--replSet", "rs0", "--bind_ip_all"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - booknet-network
+    healthcheck:
+      test: test $$(echo "rs.initiate().ok || rs.status().ok" | mongosh --quiet) -eq 1
+      interval: 10s
+      start_period: 30s
+
+  # --- Neo4j ---
+  neo4j:
+    image: neo4j
+    container_name: neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474" # Browser UI
+      - "7687:7687" # Bolt Protocol
+    environment:
+      NEO4J_AUTH: neo4j/admin123
+      NEO4J_dbms_memory_pagecache_size: 1G
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 2G
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - booknet-network
+
+  # --- Redis ---
+  redis:
+    image: redis
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - booknet-network
+
+volumes:
+  mongo_data:
+  neo4j_data:
+  neo4j_logs:
+  redis_data:
+
+networks:
+  booknet-network:
+    external: true

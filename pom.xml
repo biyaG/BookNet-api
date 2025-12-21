@@ -11,7 +11,7 @@
     <groupId>it.unipi</groupId>
     <artifactId>BookNet-api</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <packaging>war</packaging>
+    <packaging>jar</packaging>
     <name>BookNet-api</name>
     <description>BookNet-api</description>
     <url/>

@@ -41,6 +41,10 @@ public class AuthController {
     public ResponseEntity<String> login(@RequestBody UserLoginRequest request, HttpServletResponse response) {
         String token = userService.login(request);
 
+        if(token == null) {
+            return ResponseEntity.badRequest().body("Invalid username or password.");
+        }
+
         response.addHeader("Authorization", "Bearer " + token);
 
         response.addHeader("Access-Control-Expose-Headers", "Authorization");

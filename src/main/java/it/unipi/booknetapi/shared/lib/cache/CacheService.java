@@ -1,40 +1,50 @@
 package it.unipi.booknetapi.shared.lib.cache;
 
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import it.unipi.booknetapi.shared.lib.database.RedisManager;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
 
 @Service
 public class CacheService {
 
-    private final RedisManager redisManager;
+    private final JedisPool jedisPool;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry registry;
 
-    public CacheService(RedisManager redisManager) {
-        this.redisManager = redisManager;
+    public CacheService(JedisPool jedisPool, MeterRegistry registry) {
+        this.jedisPool = jedisPool;
         this.objectMapper = new ObjectMapper();
+        this.registry = registry;
     }
 
+    private <T> String toJson(T value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new RuntimeException("JSON Error", e);
+        }
+    }
+
+    private <T> T fromJson(String json, Class<T> clazz) {
+        try {
+            return objectMapper.readValue(json, clazz);
+        } catch (Exception e) {
+            throw new RuntimeException("JSON Error", e);
+        }
+    }
 
     /**
      * Save any object to Redis as a JSON string.
      */
     public <T> void save(String key, T value) {
-        // 1. Serialize Object -> JSON String
-        String jsonString;
-        try {
-            jsonString = objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Error converting object to JSON", e);
-        }
-
-        // 2. Save to Redis
-        try (Jedis jedis = redisManager.getResource()) {
-            jedis.set(key, jsonString);
-        }
+        registry.timer("redis.ops", "cmd", "set").record(() -> {
+            try (Jedis jedis = jedisPool.getResource()) {
+                jedis.set(key, toJson(value));
+            }
+        });
     }
 
 
@@ -42,16 +52,11 @@ public class CacheService {
      * Overload: Save with an expiration time (TTL) in seconds.
      */
     public <T> void save(String key, T value, int ttlSeconds) {
-        String jsonString;
-        try {
-            jsonString = objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Error converting object to JSON", e);
-        }
-
-        try (Jedis jedis = redisManager.getResource()) {
-            jedis.setex(key, ttlSeconds, jsonString);
-        }
+        registry.timer("redis.ops", "cmd", "set").record(() -> {
+            try (Jedis jedis = jedisPool.getResource()) {
+                jedis.setex(key, ttlSeconds, toJson(value));
+            }
+        });
     }
 
 
@@ -60,23 +65,12 @@ public class CacheService {
      * Returns null if the key doesn't exist.
      */
     public <T> T get(String key, Class<T> targetClass) {
-        // 1. Get String from Redis
-        String jsonString;
-        try (Jedis jedis = redisManager.getResource()) {
-            jsonString = jedis.get(key);
-        }
-
-        // 2. If null, return null immediately
-        if (jsonString == null) {
-            return null;
-        }
-
-        // 3. Deserialize JSON String -> Object
-        try {
-            return objectMapper.readValue(jsonString, targetClass);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Error parsing JSON to object", e);
-        }
+        return registry.timer("redis.ops", "cmd", "get").record(() -> {
+            try (Jedis jedis = jedisPool.getResource()) {
+                String json = jedis.get(key);
+                return (json == null) ? null : fromJson(json, targetClass);
+            }
+        });
     }
 
 
@@ -84,9 +78,11 @@ public class CacheService {
      * Delete a key
      */
     public void delete(String key) {
-        try (Jedis jedis = redisManager.getResource()) {
-            jedis.del(key);
-        }
+        registry.timer("redis.ops", "cmd", "delete").record(() -> {
+            try (Jedis jedis = jedisPool.getResource()) {
+                jedis.del(key);
+            }
+        });
     }
 
 }

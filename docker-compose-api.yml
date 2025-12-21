@@ -1,0 +1,32 @@
+name: booknet-api
+
+services:
+  api:
+    build: .
+    container_name: booknet-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Connect to containers defined in the Databases file
+      - APP_MONGO_URI=mongodb://root:admin123@mongo:27017
+      - APP_MONGO_DATABASE=booknet
+
+      - APP_NEO4J_URI=bolt://neo4j:7687
+      - APP_NEO4J_USER=neo4j
+      - APP_NEO4J_PASSWORD=admin123
+
+      - APP_REDIS_HOST=redis
+      - APP_REDIS_PORT=6379
+
+      # Keys config
+      - APP_PRIVATE_KEY_PATH=/app/keys/private_key_pkcs8.pem
+      - APP_PUBLIC_KEY_PATH=/app/keys/public_key.pem
+    volumes:
+      # Mount local keys folder to container
+      - ./keys:/app/keys
+    networks:
+      - booknet-network
+
+networks:
+  booknet-network:
+    external: true

@@ -30,6 +30,15 @@ public class SecurityConfig {
                         .requestMatchers("/book/public/**").permitAll() // Public endpoint
                         .requestMatchers("/author/public/**").permitAll() // Public endpoint
                         .requestMatchers("/admin/**").hasRole("ADMIN") // Only for role ADMIN
+
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
+
+                        .requestMatchers("/actuator/**").permitAll()
+
                         .anyRequest().authenticated() // All others require valid token
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class) // Add our filter
