@@ -8,6 +8,7 @@ import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
+import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
@@ -20,9 +21,11 @@ import org.neo4j.driver.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import static org.neo4j.driver.Values.parameters;
 
@@ -43,6 +46,14 @@ public class BookRepository implements BookRepositoryInterface {
         this.mongoCollection = mongoCollection;
         this.neo4jManager = neo4jManager;
         this.cacheService = cacheService;
+    }
+
+    private boolean handleUpdateResult(UpdateResult result, String idBook) {
+        if (result.getModifiedCount() > 0) {
+            deleteCache(idBook);
+            return true;
+        }
+        return false;
     }
 
     private static String generateCacheKey(String idBook) {
@@ -91,9 +102,7 @@ public class BookRepository implements BookRepositoryInterface {
                     success = updateResult.getModifiedCount() > 0;
                 }
                 if(success){
-                    if(book instanceof Book){
-                        saveBookToNeo4j(book);
-                    }
+                    saveBookToNeo4j(book);
                     session.commitTransaction();
 
                     this.cacheBook(book);
@@ -109,7 +118,32 @@ public class BookRepository implements BookRepositoryInterface {
         return null;
     }
 
+    public Book insertWithThread(Book book) {
+        Objects.requireNonNull(book);
+
+        InsertOneResult insertOneResult = this.mongoCollection.insertOne(book);
+        if(insertOneResult.wasAcknowledged()){
+            Thread thread = new Thread(() -> saveBookToNeo4j(book));
+            thread.start();
+        }
+        return book;
+    }
+
     private void saveBookToNeo4j(Book book) {
+        Objects.requireNonNull(book);
+
+        try(Session session = this.neo4jManager.getSession()){
+            String cypher = "CREATE (b: Book {mid: $bookId, title: $title, ratingAvg: $ratingAvg})";
+            session.executeWrite(
+                    tx -> tx.run(
+                            cypher,
+                            parameters(
+                                    "bookId", book.get_id().toHexString(),
+                                    "title", book.getTitle(), "ratingAvg", book.getReview().getRating()
+                            )
+                    )
+            );
+        }
     }
 
     @Override
@@ -151,8 +185,11 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(reviewEmbed);
 
-
-        return false;
+        UpdateResult updateResult = this.mongoCollection.updateOne(
+                Filters.eq("_id", new ObjectId(idBook)),
+                Updates.push("reviews", reviewEmbed)
+        );
+        return updateResult.getModifiedCount() > 0;
     }
 
     @Override
@@ -161,7 +198,14 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(idReview);
 
-        return false;
+       UpdateResult updateResult = this.mongoCollection.updateOne(
+                Filters.eq("_id", new ObjectId(idBook)),
+               Updates.pull("reviews",
+                       Filters.eq("_id", new ObjectId(idReview))
+               )
+        );
+        return updateResult.getModifiedCount() > 0;
+
     }
 
     @Override
@@ -169,15 +213,11 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(newImageUrl);
 
-        UpdateResult updateResult = this.mongoCollection.updateOne(
+        UpdateResult updateResult = this.mongoCollection.updateMany(
                 Filters.eq("_id", new ObjectId(idBook)),
-                Updates.set("imageUrl", newImageUrl)
+                Updates.push("images", newImageUrl)
         );
-        if(updateResult.getModifiedCount() > 0){
-            this.deleteCache(idBook);
-            return true;
-        }
-        return false;
+        return handleUpdateResult(updateResult, idBook);
     }
 
     @Override
@@ -185,23 +225,24 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(newPreviewImageUrl);
 
-        UpdateResult updateResult = this.mongoCollection.updateOne(
+        UpdateResult updateResult = this.mongoCollection.updateMany(
                 Filters.eq("_id", new ObjectId(idBook)),
-                Updates.push("previewUrl", newPreviewImageUrl)
+                Updates.push("preview", newPreviewImageUrl)
         );
-        if(updateResult.getModifiedCount() > 0){
-            this.deleteCache(idBook);
-            return true;
-        }
-        return false;
+        return handleUpdateResult(updateResult, idBook);
     }
 
     @Override
-    public boolean updateListSimilarBooks(String idBook, List<BookEmbed> similar_books) {
+    public boolean deletePreview(String idBook, String deletePreviewImageUrl) {
         Objects.requireNonNull(idBook);
-        Objects.requireNonNull(similar_books);
+        Objects.requireNonNull(deletePreviewImageUrl);
 
-        return false;
+        UpdateResult updateResult = mongoCollection.updateOne(
+                Filters.eq("_id", new ObjectId(idBook)),
+                Updates.pull("preview", deletePreviewImageUrl)
+        );
+
+        return handleUpdateResult(updateResult, idBook);
     }
 
     @Override
@@ -209,16 +250,36 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(book);
 
-        return false;
+        UpdateResult updateResult = this.mongoCollection.updateOne(
+                Filters.eq("_id", new ObjectId(idBook)),
+                Updates.set("similar_books", book)
+        );
+        return handleUpdateResult(updateResult, idBook);
     }
 
     @Override
-    public boolean addGenre(String idGenre, String name) {
-        Objects.requireNonNull(idGenre);
-        Objects.requireNonNull(name);
+    public boolean addGenre(String idBook, GenreEmbed genre) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(genre);
 
+        UpdateResult updateResult = this.mongoCollection.updateMany(
+                Filters.eq("_id", new ObjectId(idBook)),
+                Updates.push("genres", genre)
+        );
+        return handleUpdateResult(updateResult, idBook);
+    }
 
-        return false;
+    @Override
+    public boolean removeGenre(String idBook, GenreEmbed genre) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(genre);
+
+        UpdateResult updateResult = this.mongoCollection.updateOne(
+                Filters.eq("_id", new ObjectId(idBook)),
+                Updates.pull("_id ", Filters.eq("_id", new ObjectId(genre.getId())))
+        );
+
+        return handleUpdateResult(updateResult, idBook);
     }
 
     @Override
@@ -254,17 +315,23 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     @Override
-    public Optional<Book> findByTitle(String title) {
+    public Optional<List<Book>> findByTitle(String title) {
         Objects.requireNonNull(title);
 
-        Book book = this.mongoCollection.find(Filters.eq("title", title)).first(); ///////////////
-        if(book != null){
-            this.cacheBook(book);
-            return Optional.of(book);
-        }
+        //Pattern.quote(title) is a Java regex safety function.
+        //It makes sure the string you pass is treated as literal text, not as a regular-expression pattern.
+        //we are not strict on how the user search for the title
+        List<Book> books = this.mongoCollection
+                .find(Filters.eq("title", title))
+                .into(new ArrayList<>());
 
+        if(books != null){
+            books.forEach(this::cacheBook);
+            return Optional.of(books);
+        }
         return Optional.empty();
     }
+
 }
 
 
