@@ -1,10 +1,11 @@
 package it.unipi.booknetapi.model.user;
 
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 @EqualsAndHashCode(callSuper = true)
 @Data
+@Builder
+@NoArgsConstructor
 public class Admin extends User {
 
 

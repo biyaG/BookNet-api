@@ -1,15 +1,16 @@
 package it.unipi.booknetapi.model.user;
 
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
+import org.bson.codecs.pojo.annotations.BsonId;
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 
 @Data
 @Builder
+@NoArgsConstructor
 public class User {
 
-    @Id
+    @Id @BsonId
     private ObjectId id;
 
     private String name;

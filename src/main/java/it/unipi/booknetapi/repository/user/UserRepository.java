@@ -17,9 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 import static org.neo4j.driver.Values.parameters;
 
@@ -63,6 +61,15 @@ public class UserRepository implements UserRepositoryInterface {
 
     private void deleteCache(String idUser) {
         this.cacheService.delete(generateCacheKey(idUser));
+    }
+
+    private void deleteCache(List<String> idUsers) {
+        idUsers.forEach(this::deleteCache);
+    }
+
+    private void deleteCacheInThread(List<String> idUsers) {
+        Thread thread = new Thread(() -> deleteCache(idUsers));
+        thread.start();
     }
 
     /**
@@ -144,6 +151,62 @@ public class UserRepository implements UserRepositoryInterface {
                             )
                     )
             );
+        }
+    }
+
+    /**
+     * @param users users to insert
+     * @return the inserted users
+     */
+    @Override
+    public List<User> insertAll(List<User> users) {
+        Objects.requireNonNull(users);
+        if(users.isEmpty()) return List.of();
+
+        logger.debug("Inserting many user: {}", users.size());
+
+        try (ClientSession mongoSession = this.mongoManager.getMongoClient().startSession()) {
+            mongoSession.startTransaction();
+
+            try {
+                this.mongoCollection.insertMany(mongoSession, users);
+
+                saveReadersToNeo4j(users);
+
+                mongoSession.commitTransaction();
+
+                this.cacheUserInThread(users);
+
+                logger.info("Many User inserted successfully: {}", users.size());
+
+                return users;
+            } catch (Exception e) {
+                mongoSession.abortTransaction();
+                logger.error("Error during insert in no4j: {}", e.getMessage());
+            }
+        }
+
+        return List.of();
+    }
+
+    private void saveReadersToNeo4j(List<User> users) {
+        List<Map<String, Object>> noe4jBatch = new ArrayList<>();
+
+        for(User user : users) {
+            if(user instanceof Reader) {
+                noe4jBatch.add(Map.of("userId", user.getId().toHexString(), "userName", user.getName()));
+            }
+        }
+
+        if(!noe4jBatch.isEmpty()) {
+            try (Session session = this.neo4jManager.getSession()) {
+                session.executeWrite(
+                        tx -> tx.run(
+                                "UNWIND $users as user CREATE (r:Reader {mid: user.userId, name: user.userName})",
+                                parameters("users", noe4jBatch)
+                        )
+                );
+            }
         }
     }
 
@@ -279,6 +342,48 @@ public class UserRepository implements UserRepositoryInterface {
                     tx -> tx.run(
                             "OPTIONAL MATCH (r:Reader {mid: $userId}) DETACH DELETE r",
                             parameters("userId", idUser)
+                    )
+            );
+        }
+    }
+
+    /**
+     * @param idUsers user's ids
+     * @return true if the users were deleted successfully, false otherwise
+     */
+    @Override
+    public boolean deleteAll(List<String> idUsers) {
+        Objects.requireNonNull(idUsers);
+
+        try (ClientSession mongoSession = this.mongoManager.getMongoClient().startSession()) {
+            mongoSession.startTransaction();
+
+            try {
+                DeleteResult deleteResult = this.mongoCollection
+                        .deleteMany(
+                                Filters.in("_id", idUsers.stream().map(ObjectId::new).toList())
+                        );
+                if(deleteResult.getDeletedCount() > 0) {
+                    deleteUsersBatchFromNeo4j(idUsers);
+                    mongoSession.commitTransaction();
+                    this.deleteCacheInThread(idUsers);
+                    return true;
+                }
+            } catch (Exception e) {
+                mongoSession.abortTransaction();
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private void deleteUsersBatchFromNeo4j(List<String> idUsers) {
+        try (Session session = this.neo4jManager.getSession()) {
+            session.executeWrite(
+                    tx -> tx.run(
+                            "OPTIONAL MATCH (r:Reader) WHERE r.mid IN $userIds DETACH DELETE r",
+                            parameters("userIds", idUsers)
                     )
             );
         }

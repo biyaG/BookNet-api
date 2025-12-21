@@ -26,7 +26,7 @@ public class SecurityConfig {
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // No Sessions
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/login").permitAll() // Public endpoint
-                        .requestMatchers("/auth/register").permitAll() // Public endpoint
+                        .requestMatchers("/auth/register/**").permitAll() // Public endpoint
                         .requestMatchers("/book/public/**").permitAll() // Public endpoint
                         .requestMatchers("/author/public/**").permitAll() // Public endpoint
                         .requestMatchers("/admin/**").hasRole("ADMIN") // Only for role ADMIN
