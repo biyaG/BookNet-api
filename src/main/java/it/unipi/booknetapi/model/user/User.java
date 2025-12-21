@@ -8,6 +8,7 @@ import org.springframework.data.annotation.Id;
 @Data
 @Builder
 @NoArgsConstructor
+@AllArgsConstructor
 public class User {
 
     @Id @BsonId

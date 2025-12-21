@@ -1,9 +1,10 @@
 package it.unipi.booknetapi.dto.user;
 
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserLoginRequest {
 
     private String username;

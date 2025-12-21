@@ -1,13 +1,14 @@
 package it.unipi.booknetapi.command.user;
 
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserDeleteManyCommand {
 
     private List<String> ids = new ArrayList<>();

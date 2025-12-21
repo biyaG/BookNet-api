@@ -3,11 +3,12 @@ package it.unipi.booknetapi.command.user;
 import it.unipi.booknetapi.dto.user.UserCreateRequest;
 import it.unipi.booknetapi.dto.user.UserRegistrationRequest;
 import it.unipi.booknetapi.model.user.Role;
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserCreateCommand {
 
     private String name;

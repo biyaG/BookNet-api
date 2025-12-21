@@ -2,11 +2,11 @@ package it.unipi.booknetapi.dto.user;
 
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.model.user.User;
-import lombok.Builder;
-import lombok.Data;
+import lombok.*;
 
 @Data
-@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserResponse {
 
     private String id;

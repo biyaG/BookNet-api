@@ -6,6 +6,7 @@ import org.bson.types.ObjectId;
 @Data
 @Builder
 @NoArgsConstructor
+@AllArgsConstructor
 public class UserEmbed {
 
     private ObjectId id;
