@@ -2,18 +2,19 @@ package it.unipi.booknetapi.repository.book;
 
 
 import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
+import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.review.ReviewEmbed;
-import it.unipi.booknetapi.shared.lib.database.MongoManager;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
@@ -25,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 import static org.neo4j.driver.Values.parameters;
 
@@ -33,19 +33,21 @@ public class BookRepository implements BookRepositoryInterface {
 
     Logger logger = LoggerFactory.getLogger(BookRepository.class);
 
-    private final MongoManager mongoManager;
     private final MongoCollection<Book> mongoCollection;
     private final Neo4jManager neo4jManager;
     private final CacheService cacheService;
+    private final MeterRegistry registry;
+    private final MongoClient mongoClient;
 
     private static final String CACHE_PREFIX = "book:";
     private static final int CACHE_TTL = 3600; // 1 hour
 
-    public BookRepository(MongoManager mongoManager, MongoCollection<Book> mongoCollection, Neo4jManager neo4jManager, CacheService cacheService) {
-        this.mongoManager = mongoManager;
+    public BookRepository(MongoClient mongoClient, MongoCollection<Book> mongoCollection, Neo4jManager neo4jManager, CacheService cacheService, MeterRegistry registry) {
+        this.mongoClient = mongoClient;
         this.mongoCollection = mongoCollection;
         this.neo4jManager = neo4jManager;
         this.cacheService = cacheService;
+        this.registry = registry;
     }
 
     private boolean handleUpdateResult(UpdateResult result, String idBook) {
@@ -68,7 +70,7 @@ public class BookRepository implements BookRepositoryInterface {
         books.forEach(this::cacheBook);
     }
 
-    private void cacheUserInThread(List<Book> books) {
+    private void cacheBookInThread(List<Book> books) {
         Thread thread = new Thread(() -> cacheBook(books));
         thread.start();
     }
@@ -77,27 +79,34 @@ public class BookRepository implements BookRepositoryInterface {
         this.cacheService.delete(generateCacheKey(idBook));
     }
 
+    private void deleteCache(List<String> idBooks) {
+        idBooks.forEach(this::deleteCache);
+    }
+
+    private void deleteCacheInThread(List<String> idBooks) {
+        Thread thread = new Thread(() -> deleteCache(idBooks));
+        thread.start();
+    }
 
     @Override
     public Book save(Book book) {
         Objects.requireNonNull(book);
         logger.debug("Saving book: {}", book);
 
-        try(com.mongodb.client.ClientSession session = this.mongoManager.getMongoClient().startSession()){
+        try(com.mongodb.client.ClientSession session = this.mongoClient.startSession()){
             session.startTransaction();
 
             try{
                 boolean success = false;
                 if(book.get_id() == null){
-                    InsertOneResult insertOneResult = this.mongoCollection.insertOne(book);
+                    InsertOneResult insertOneResult = this.mongoCollection.insertOne(book); //Upsert Logic (Update or Insert):
                     success = insertOneResult.wasAcknowledged();
                     if(success){
                         book.set_id(Objects.requireNonNull(insertOneResult.getInsertedId()).asObjectId().getValue());
                     }
                 } else{
                     UpdateResult updateResult = this.mongoCollection.replaceOne(
-                            Filters.eq("_id", book.get_id()),
-                            book
+                            Filters.eq("_id", book.get_id()), book
                     );
                     success = updateResult.getModifiedCount() > 0;
                 }
@@ -126,31 +135,41 @@ public class BookRepository implements BookRepositoryInterface {
             Thread thread = new Thread(() -> saveBookToNeo4j(book));
             thread.start();
         }
-        return book;
+        return insertOneResult.wasAcknowledged() ? book : null;
     }
 
-    private void saveBookToNeo4j(Book book) {
+ private void saveBookToNeo4j(Book book) {
         Objects.requireNonNull(book);
 
-        try(Session session = this.neo4jManager.getSession()){
-            String cypher = "CREATE (b: Book {mid: $bookId, title: $title, ratingAvg: $ratingAvg})";
-            session.executeWrite(
-                    tx -> tx.run(
-                            cypher,
-                            parameters(
-                                    "bookId", book.get_id().toHexString(),
-                                    "title", book.getTitle(), "ratingAvg", book.getReview().getRating()
-                            )
-                    )
-            );
-        }
-    }
+        this.registry.timer("neo4j.ops", "query", "save_book").record(() -> {
+            try(Session session = this.neo4jManager.getDriver().session()){
+                String cypher = "CREATE (b:Book {mid: $bookId, title : $title, ratingAvg: $ratingAvg})";
+                session.executeWrite(tx -> tx.run(
+                        cypher,
+                        parameters(
+                                "bookId", book.get_id().toHexString(),
+                                "title", book.getTitle(),
+                                "ratingAvg", book.getRatingReview()//getRatingReview actually gives you the document so think about this latter
+                        )
+                ));
+            }
+        });
+ }
+
+//    private Book BookWrittenByAuthorRelationship(Book book){
+//        Objects.requireNonNull(book);
+//
+//        this.registry.timer("neo4j.ops", "query", "BookWrittenByAuthorRelationship").record(() -> {
+//            String cypher = ""
+//        })
+//        return Objects.requireNonNull(book); ///
+//    }
 
     @Override
     public boolean deleteBook(String idBook) {
         Objects.requireNonNull(idBook);
 
-        try(ClientSession session = this.mongoManager.getMongoClient().startSession()){
+        try(ClientSession session = this.mongoClient.startSession()){
             session.startTransaction();
             try{
                 DeleteResult deleteResult = this.mongoCollection.deleteOne(Filters.eq("_id", new ObjectId(idBook)));
@@ -169,14 +188,17 @@ public class BookRepository implements BookRepositoryInterface {
 
     private void deleteBookFromNeo4J(String idBook) {
         Objects.requireNonNull(idBook);
-        try(Session session = this.neo4jManager.getSession()){
-            session.executeWrite(
-                    tx->tx.run(
-                            "OPTIONAL MATCH (b:Book {mid: $bookId}) DETACH DELETE b",
-                            parameters("bookId", idBook)
-                    )
-            );
-        }
+
+        this.registry.timer("neo4j.ops", "query", "delete_book").record(()->{
+            try(Session session = this.neo4jManager.getDriver().session()){
+                session.executeWrite(
+                        tx -> tx.run(
+                                "OPTIONAL MATCH(b:Book {mid: $bookId}) DETACH DELETE r",
+                                parameters("bookId", idBook)
+                        )
+                );
+            }
+        });
     }
 
     @Override
@@ -283,19 +305,40 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     @Override
-    public PageResult<Book> findAll(int page, int size) {
-        int skip = page * size;
+    public boolean deleteAllBooks(List<String> idBooks){
+        Objects.requireNonNull(idBooks);
 
-        List<Book> books = this.mongoCollection.find().skip(skip).limit(size).into(List.of());
-
-        long total = this.mongoCollection.countDocuments();
-        cacheBookInThread(books);
-        return new PageResult<>(books, total, page, size);
+        try (ClientSession session = this.mongoClient.startSession()){
+            session.startTransaction();
+            try{
+                DeleteResult deleteResult = this.mongoCollection.deleteMany(
+                        Filters.in("_id",idBooks.stream().map(ObjectId::new).toList())
+                );
+                if(deleteResult.getDeletedCount() > 0){
+                    deleteBookBatchFromNeo4j(idBooks);
+                    session.commitTransaction();
+                    this.deleteCacheInThread(idBooks);
+                    return true;
+                }
+            }catch(Exception e){
+                session.abortTransaction();
+                return false;
+            }
+        }
+        return false;
     }
 
-    private void cacheBookInThread(List<Book> books) {
-        Thread thread = new Thread(() -> cacheBook(books));
-        thread.start();
+    private void deleteBookBatchFromNeo4j(List<String> idBooks){
+        this.registry.timer("neo4j.ops", "query", "delete_books").record(() -> {
+            try(Session session = this.neo4jManager.getDriver().session()){
+                session.executeWrite(
+                        tx -> tx.run(
+                                "OPTIONAL MATCH (b: Book) WHERE b.mid IN $bookIds DETACH DELETE b", /// why bookIds
+                                parameters("bookIds",idBooks)
+                        )
+                );
+            }
+        });
     }
 
     @Override
@@ -330,6 +373,17 @@ public class BookRepository implements BookRepositoryInterface {
             return Optional.of(books);
         }
         return Optional.empty();
+    }
+
+    @Override
+    public PageResult<Book> findAll(int page, int size) {
+        int skip = page * size;
+
+        List<Book> books = this.mongoCollection.find().skip(skip).limit(size).into(List.of());
+
+        long total = this.mongoCollection.countDocuments();
+        cacheBookInThread(books); ////
+        return new PageResult<>(books, total, page, size);
     }
 
 }

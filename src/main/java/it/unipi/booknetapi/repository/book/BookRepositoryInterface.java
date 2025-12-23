@@ -12,6 +12,7 @@ import java.util.Optional;
 public interface BookRepositoryInterface {
     Book save(Book book);
     boolean deleteBook(String idBook);
+    boolean deleteAllBooks(List<String> idBooks);
     boolean addReview(String idBook, String idUser, ReviewEmbed reviewEmbed);
     boolean removeReview(String idBook, String idUser, String idReview);
     boolean updateImage(String idBook, String newImageUrl);
