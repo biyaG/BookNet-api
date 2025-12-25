@@ -11,6 +11,7 @@ import java.util.Optional;
 
 public interface BookRepositoryInterface {
     Book save(Book book);
+    List<Book> saveAll(List<Book> books);
     boolean deleteBook(String idBook);
     boolean deleteAllBooks(List<String> idBooks);
     boolean addReview(String idBook, String idUser, ReviewEmbed reviewEmbed);

@@ -22,10 +22,7 @@ import org.neo4j.driver.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 import static org.neo4j.driver.Values.parameters;
 
@@ -138,7 +135,7 @@ public class BookRepository implements BookRepositoryInterface {
         return insertOneResult.wasAcknowledged() ? book : null;
     }
 
- private void saveBookToNeo4j(Book book) {
+    private void saveBookToNeo4j(Book book) {
         Objects.requireNonNull(book);
 
         this.registry.timer("neo4j.ops", "query", "save_book").record(() -> {
@@ -156,14 +153,63 @@ public class BookRepository implements BookRepositoryInterface {
         });
  }
 
-//    private Book BookWrittenByAuthorRelationship(Book book){
-//        Objects.requireNonNull(book);
-//
-//        this.registry.timer("neo4j.ops", "query", "BookWrittenByAuthorRelationship").record(() -> {
+
+    @Override
+    public List<Book> saveAll(List<Book> books){
+        Objects.requireNonNull(books);
+
+        if(books.isEmpty()) return List.of();
+
+        logger.debug("Inserting many books: {}", books.size());
+
+        try(ClientSession session = this.mongoClient.startSession()){
+            session.startTransaction();
+            try{
+                this.mongoCollection.insertMany(session, books);
+                saveBooksToNeo4j(books);
+                session.commitTransaction();
+                this.cacheBookInThread(books);
+
+                logger.info("Books saved successfully : {}",books.size());
+                return books;
+            }catch (Exception e){
+                session.abortTransaction();
+                logger.error("Error occured while inserting in Neo4j: {}",e.getMessage());
+            }
+        }
+        return List.of();
+    }
+
+    private void saveBooksToNeo4j(List<Book> books){
+        List<Map<String, Object>> neo4jBatch = new ArrayList<>();
+        for(Book book : books){
+            neo4jBatch.add(Map.of("bookId", book.get_id().toHexString(),"title", book.getTitle(), "ratingAvg", book.getRatingReview()));
+        }
+
+        if(!neo4jBatch.isEmpty()){
+            this.registry.timer("neo4j.ops", "query", "save_reader").record(() -> {
+                try(Session session = this.neo4jManager.getDriver().session()){
+                    session.executeWrite(
+                            tx -> tx.run(
+                                    "UNWIND $books as book CREATE (b:Book {mid:book.bookId, title: book.title, ratingAvg: book.ratingAvg})",
+                                    parameters("books", neo4jBatch)
+                            )
+                    );
+                }
+            });
+        }
+
+    }
+
+    private Book BookWrittenByAuthorRelationship(Book book){
+        Objects.requireNonNull(book);
+
+        this.registry.timer("neo4j.ops", "query", "BookWrittenByAuthorRelationship").record(() -> {
 //            String cypher = ""
-//        })
-//        return Objects.requireNonNull(book); ///
-//    }
+        });
+
+        return Objects.requireNonNull(book); ///
+    }
 
     @Override
     public boolean deleteBook(String idBook) {
@@ -193,7 +239,7 @@ public class BookRepository implements BookRepositoryInterface {
             try(Session session = this.neo4jManager.getDriver().session()){
                 session.executeWrite(
                         tx -> tx.run(
-                                "OPTIONAL MATCH(b:Book {mid: $bookId}) DETACH DELETE r",
+                                "OPTIONAL MATCH(b:Book {mid: $bookId}) DETACH DELETE r", //CHANGE
                                 parameters("bookId", idBook)
                         )
                 );
@@ -361,9 +407,6 @@ public class BookRepository implements BookRepositoryInterface {
     public Optional<List<Book>> findByTitle(String title) {
         Objects.requireNonNull(title);
 
-        //Pattern.quote(title) is a Java regex safety function.
-        //It makes sure the string you pass is treated as literal text, not as a regular-expression pattern.
-        //we are not strict on how the user search for the title
         List<Book> books = this.mongoCollection
                 .find(Filters.eq("title", title))
                 .into(new ArrayList<>());
