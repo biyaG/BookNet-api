@@ -27,7 +27,7 @@ public class Neo4jManager {
 
     @Bean(destroyMethod = "close")
     public Driver getDriver() {
-        System.out.println("Initializing Neo4J Driver via @Bean...");
+        // System.out.println("Initializing Neo4J Driver via @Bean...");
 
         return GraphDatabase.driver(
                 appConfig.getNeo4jUri(),

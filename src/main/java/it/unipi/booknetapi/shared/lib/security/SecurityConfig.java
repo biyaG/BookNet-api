@@ -25,11 +25,18 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for stateless APIs
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // No Sessions
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/login").permitAll() // Public endpoint
-                        .requestMatchers("/auth/register/**").permitAll() // Public endpoint
-                        .requestMatchers("/book/public/**").permitAll() // Public endpoint
-                        .requestMatchers("/author/public/**").permitAll() // Public endpoint
-                        .requestMatchers("/admin/**").hasRole("ADMIN") // Only for role ADMIN
+                        .requestMatchers("/**").permitAll()
+
+                        /*
+                        .requestMatchers("/api/auth/register/**").permitAll() // Registering endpoints are public
+                        .requestMatchers("/api/auth/login").permitAll() // Login endpoint is public
+
+                        .requestMatchers("/api/user/**").permitAll() // Private endpoint
+
+                        .requestMatchers("/api/book/public/**").permitAll() // Public endpoint
+                        .requestMatchers("/api/author/public/**").permitAll() // Public endpoint
+
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN") // Only for role ADMIN
 
                         .requestMatchers(
                                 "/v3/api-docs/**",
@@ -40,6 +47,7 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/**").permitAll()
 
                         .anyRequest().authenticated() // All others require valid token
+                        */
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class) // Add our filter
                 .build();

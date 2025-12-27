@@ -10,8 +10,8 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
+import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.user.*;
-import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.lib.database.*;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
@@ -32,55 +32,23 @@ public class UserRepository implements UserRepositoryInterface {
     private final MongoClient mongoClient;
     private final MongoCollection<User> mongoCollection;
     private final Neo4jManager neo4jManager;
-    private final CacheService cacheService;
     private final MeterRegistry registry;
 
-    private static final String CACHE_PREFIX = "user:";
-    private static final int CACHE_TTL = 3600; // 1 hour
+
 
     public UserRepository(
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
-            CacheService cacheService,
             MeterRegistry registry
     ) {
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("users", User.class);
         this.neo4jManager = neo4jManager;
-        this.cacheService = cacheService;
         this.registry = registry;
     }
 
-    private static String generateCacheKey(String idUser) {
-        return CACHE_PREFIX + idUser;
-    }
 
-    private void cacheUser(User user) {
-        this.cacheService.save(generateCacheKey(user.getId().toHexString()), user, CACHE_TTL);
-    }
-
-    private void cacheUser(List<User> users) {
-        users.forEach(this::cacheUser);
-    }
-
-    private void cacheUserInThread(List<User> users) {
-        Thread thread = new Thread(() -> cacheUser(users));
-        thread.start();
-    }
-
-    private void deleteCache(String idUser) {
-        this.cacheService.delete(generateCacheKey(idUser));
-    }
-
-    private void deleteCache(List<String> idUsers) {
-        idUsers.forEach(this::deleteCache);
-    }
-
-    private void deleteCacheInThread(List<String> idUsers) {
-        Thread thread = new Thread(() -> deleteCache(idUsers));
-        thread.start();
-    }
 
     /**
      * @param user the user to insert
@@ -99,14 +67,15 @@ public class UserRepository implements UserRepositoryInterface {
                 boolean success;
                 if(user.getId() == null) {
                     InsertOneResult insertOneResult = this.mongoCollection
-                            .insertOne(user);
-                    success = insertOneResult.wasAcknowledged();
+                            .insertOne(mongoSession, user);
+                    success = insertOneResult.getInsertedId() != null;
                     if(success) {
                         user.setId(Objects.requireNonNull(insertOneResult.getInsertedId()).asObjectId().getValue());
                     }
                 } else {
                     UpdateResult updateResult = this.mongoCollection
                             .replaceOne(
+                                    mongoSession,
                                     Filters.eq("_id", user.getId()),
                                     user
                             );
@@ -120,14 +89,15 @@ public class UserRepository implements UserRepositoryInterface {
 
                     mongoSession.commitTransaction();
 
-                    this.cacheUser(user);
                     logger.info("User inserted successfully: {}", user);
                     return user;
+                } else {
+                    mongoSession.abortTransaction();
+                    logger.error("Error during insert in mongodb");
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
                 logger.error("Error during insert in no4j: {}", e.getMessage());
-                return null;
             }
         }
 
@@ -139,7 +109,7 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(user);
 
         InsertOneResult insertOneResult = this.mongoCollection.insertOne(user);
-        if(insertOneResult.wasAcknowledged() && user instanceof Reader) {
+        if(insertOneResult.getInsertedId() != null && user instanceof Reader) {
             Thread thread = new Thread(() -> saveReaderToNeo4j((Reader) user));
             thread.start();
         }
@@ -154,13 +124,16 @@ public class UserRepository implements UserRepositoryInterface {
             try (Session session = this.neo4jManager.getDriver().session()) {
                 String cypher = "CREATE (r:Reader {mid: $userId, name: $userName})";
                 session.executeWrite(
-                        tx -> tx.run(
-                                cypher,
-                                parameters(
-                                        "userId", reader.getId().toHexString(),
-                                        "userName", reader.getName()
-                                )
-                        )
+                        tx -> {
+                            tx.run(
+                                    cypher,
+                                    parameters(
+                                            "userId", reader.getId().toHexString(),
+                                            "userName", reader.getName()
+                                    )
+                            );
+                            return null;
+                        }
                 );
             }
         });
@@ -171,7 +144,7 @@ public class UserRepository implements UserRepositoryInterface {
      * @return the inserted users
      */
     @Override
-    public List<User> insertAll(List<User> users) {
+    public List<User> insert(List<User> users) {
         Objects.requireNonNull(users);
         if(users.isEmpty()) return List.of();
 
@@ -186,8 +159,6 @@ public class UserRepository implements UserRepositoryInterface {
                 saveReadersToNeo4j(users);
 
                 mongoSession.commitTransaction();
-
-                this.cacheUserInThread(users);
 
                 logger.info("Many User inserted successfully: {}", users.size());
 
@@ -214,10 +185,13 @@ public class UserRepository implements UserRepositoryInterface {
             this.registry.timer("neo4j.ops", "query", "save_reader").record(() -> {
                 try (Session session = this.neo4jManager.getDriver().session()) {
                     session.executeWrite(
-                            tx -> tx.run(
-                                    "UNWIND $users as user CREATE (r:Reader {mid: user.userId, name: user.userName})",
-                                    parameters("users", noe4jBatch)
-                            )
+                            tx -> {
+                                tx.run(
+                                        "UNWIND $users as user CREATE (r:Reader {mid: user.userId, name: user.userName})",
+                                        parameters("users", noe4jBatch)
+                                );
+                                return null;
+                            }
                     );
                 }
             });
@@ -234,18 +208,48 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newName);
 
-        UpdateResult updateResult = this.mongoCollection
-                .updateOne(
-                        Filters.eq("_id", new ObjectId(idUser)),
-                        Updates.set("name", newName)
-                );
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
+            mongoSession.startTransaction();
 
-        if(updateResult.getModifiedCount() > 0) {
-            this.deleteCache(idUser);
-            return true;
+            try {
+                UpdateResult updateResult = this.mongoCollection
+                        .updateOne(
+                                mongoSession,
+                                Filters.eq("_id", new ObjectId(idUser)),
+                                Updates.set("name", newName)
+                        );
+
+                if(updateResult.getModifiedCount() > 0) {
+                    this.updateReaderNameInNeo4j(idUser, newName);
+                    mongoSession.commitTransaction();
+
+                    return true;
+                }
+            } catch (Exception e) {
+                mongoSession.abortTransaction();
+            }
         }
 
         return false;
+    }
+
+    private void updateReaderNameInNeo4j(String idUser, String newName) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(newName);
+
+        this.registry.timer("neo4j.ops", "query", "update_reader").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(
+                        tx -> {
+                            tx.run(
+                                    "MATCH (r:Reader {mid: $userId}) SET r.name = $userName",
+                                    parameters("userId", idUser, "userName", newName)
+                            );
+                            return null;
+                        }
+                );
+            }
+        });
     }
 
     /**
@@ -264,12 +268,7 @@ public class UserRepository implements UserRepositoryInterface {
                         Updates.set("role", newRole)
                 );
 
-        if(updateResult.getModifiedCount() > 0) {
-            this.deleteCache(idUser);
-            return true;
-        }
-
-        return false;
+        return updateResult.getModifiedCount() > 0;
     }
 
 
@@ -289,12 +288,7 @@ public class UserRepository implements UserRepositoryInterface {
                         Updates.set("password", newPassword)
                 );
 
-        if(updateResult.getModifiedCount() > 0) {
-            this.deleteCache(idUser);
-            return true;
-        }
-
-        return false;
+        return updateResult.getModifiedCount() > 0;
     }
 
     /**
@@ -313,11 +307,268 @@ public class UserRepository implements UserRepositoryInterface {
                         Updates.set("imageUrl", newImageUrl)
                 );
 
+        return updateResult.getModifiedCount() > 0;
+    }
+
+    /**
+     * @param idUser
+     * @param preference
+     * @return
+     */
+    @Override
+    public boolean updatePreference(String idUser, UserPreference preference) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(preference);
+
+        UpdateResult updateResult = this.mongoCollection
+                .updateOne(
+                        Filters.eq("_id", new ObjectId(idUser)),
+                        Updates.set("preference", preference)
+                );
+
         if(updateResult.getModifiedCount() > 0) {
-            this.deleteCache(idUser);
+            updateNeo4jPreferenceThread(idUser, preference);
             return true;
         }
 
+        return false;
+    }
+
+    private void updateNeo4jPreferenceThread(String idUser, UserPreference preference) {
+        Thread thread = new Thread(() -> updateNeo4jPreference(idUser, preference));
+        thread.start();
+    }
+
+    private void updateNeo4jPreference(String idUser, UserPreference preference) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(preference);
+
+        List<Map<String, Object>> genreList = preference.getGenres() == null ? Collections.emptyList() :
+                preference.getGenres().stream()
+                        .filter(g -> g.getId() != null) // Safety check
+                        .map(g -> Map.<String, Object>of("id", g.getId(), "name", g.getName()))
+                        .toList();
+
+        List<Map<String, Object>> authorList = preference.getAuthors() == null ? Collections.emptyList() :
+                preference.getAuthors().stream()
+                        .filter(a -> a.getId() != null)
+                        .map(a -> Map.<String, Object>of("id", a.getId(), "name", a.getName()))
+                        .toList();
+
+        this.registry.timer("neo4j.ops", "query", "update_reader").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+
+                session.executeWrite(tx -> {
+                    String cypher = """
+                    MATCH (r:Reader {mid: $userId})
+                    
+                    // Step A: Clear existing relationships (Full Overwrite Strategy)
+                    // We use OPTIONAL MATCH to avoid failing if no relationships exist yet
+                    OPTIONAL MATCH (r)-[r1:INTERESTED_IN]->(:Genre)
+                    OPTIONAL MATCH (r)-[r2:FOLLOWS]->(:Author)
+                    DELETE r1, r2
+                   
+                    // Step B: Rebuild Genre Connections
+                    // We use FOREACH because UNWIND fails the whole query if the list is empty
+                    WITH r
+                    FOREACH (gData IN $genres |
+                        MERGE (g:Genre {mid: gData.id})
+                        ON CREATE SET g.name = gData.name
+                        MERGE (r)-[:INTERESTED_IN]->(g)
+                    )
+                   
+                    // Step C: Rebuild Author Connections
+                    FOREACH (aData IN $authors |
+                        MERGE (a:Author {mid: aData.id})
+                        ON CREATE SET a.name = aData.name
+                        MERGE (r)-[:FOLLOWS]->(a)
+                    )
+                    """;
+
+                    tx.run(
+                            cypher,
+                            parameters(
+                                "userId", idUser,
+                                "genres", genreList,
+                                "authors", authorList
+                            )
+                    );
+                    return null;
+                });
+            }
+        });
+    }
+
+    /**
+     * @param idUser user's id
+     * @param books list of books to add to the shelf
+     * @return true if the shelf was updated successfully, false otherwise
+     */
+    @Override
+    public boolean updateShelf(String idUser, List<BookEmbed> books) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(books);
+
+        List<UserBookShelf> shelf = books.stream()
+                .filter(b -> b.getId() != null)
+                .map(b -> new UserBookShelf(b, BookShelfStatus.ADDED, new Date()))
+                .toList();
+
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
+            mongoSession.startTransaction();
+
+            try {
+                UpdateResult updateResult = this.mongoCollection
+                        .updateOne(
+                                Filters.eq("_id", new ObjectId(idUser)),
+                                Updates.set("shelf", shelf)
+                        );
+
+                if(updateResult.getModifiedCount() > 0) {
+                    updateShelfNeo4j(idUser, shelf);
+                    mongoSession.commitTransaction();
+                    return true;
+                } else {
+                    mongoSession.abortTransaction();
+                }
+            } catch (Exception e) {
+                mongoSession.abortTransaction();
+            }
+        }
+
+        return false;
+    }
+
+    private void updateShelfNeo4j(String idUser, List<UserBookShelf> shelf) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(shelf);
+
+        // TODO: to complete
+    }
+
+    /**
+     * @param idUser user's id
+     * @param book book to add to the shelf
+     * @return true if the book was added successfully, false otherwise
+     */
+    @Override
+    public boolean addBookInShelf(String idUser, BookEmbed book) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(book);
+
+        if(!ObjectId.isValid(idUser)) return false;
+        if(book.getId() == null) return false;
+
+        UserBookShelf bookShelf = new UserBookShelf(book, BookShelfStatus.ADDED, new Date());
+
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
+            mongoSession.startTransaction();
+
+            try {
+                UpdateResult updateResult = this.mongoCollection
+                        .updateOne(
+                                Filters.eq("_id", new ObjectId(idUser)),
+                                Updates.push("shelf", bookShelf)
+                        );
+
+                if(updateResult.getModifiedCount() > 0) {
+                    addBookInShelfNeo4j(idUser, book);
+                    mongoSession.commitTransaction();
+                    return true;
+                } else {
+                    mongoSession.abortTransaction();
+                }
+            } catch (Exception e) {
+                mongoSession.abortTransaction();
+            }
+        }
+
+
+
+        return false;
+    }
+
+    private void addBookInShelfNeo4j(String idUser, BookEmbed book) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(book);
+
+        this.registry.timer("neo4j.ops", "query", "add_to_shelf").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+
+                session.executeWrite(tx -> {
+                    String cypher = """
+                    MATCH (r:Reader {mid: $userId})
+                    
+                    // 1. Ensure the Book exists in the Graph
+                    // We merge on 'mid' (Mongo ID) to avoid duplicates
+                    MERGE (b:Book {mid: $bookId})
+                    
+                    // 2. If the book is new to Neo4j, initialize its properties
+                    ON CREATE SET
+                        b.id = randomUUID(),  // Generate a Neo4j-specific UUID
+                        b.title = $bookTitle
+                    
+                    // 3. Create the Shelf Relationship
+                    MERGE (r)-[rel:ADDED_TO_SHELF]->(b)
+                    
+                    // 4. Update Relationship Properties
+                    SET rel.ts = datetime(),
+                        // Default to 'WANT_TO_READ' if status is missing,
+                        // otherwise keep the existing status
+                        rel.status = COALESCE(rel.status, 'ADDED')
+                    """;
+
+                    tx.run(
+                            cypher,
+                            parameters(
+                                "userId", idUser,
+                                "bookId", book.getId().toHexString(),
+                                "bookTitle", book.getTitle()
+                            )
+                    );
+                    return null;
+                });
+            }
+        });
+    }
+
+    /**
+     * @param idUser
+     * @param idBook
+     * @return
+     */
+    @Override
+    public boolean removeBookFromShelf(String idUser, String idBook) {
+        return false;
+    }
+
+    /**
+     * @param idUser
+     * @param reviews
+     * @return
+     */
+    @Override
+    public boolean updateReviews(String idUser, List<String> reviews) {
+        return false;
+    }
+
+    /**
+     * @param idUser user's id
+     * @param idReview review's id
+     * @return true if the review was added successfully, false otherwise
+     */
+    @Override
+    public boolean addReview(String idUser, String idReview) {
+        return false;
+    }
+
+    /**
+     * @param idUser user's id
+     * @param idReview review's id
+     * @return true if the review was deleted successfully, false otherwise
+     */
+    @Override
+    public boolean deleteReview(String idUser, String idReview) {
         return false;
     }
 
@@ -328,6 +579,8 @@ public class UserRepository implements UserRepositoryInterface {
     public boolean delete(String idUser) {
         Objects.requireNonNull(idUser);
 
+        if(!ObjectId.isValid(idUser)) return false;
+
         try(ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
@@ -337,8 +590,9 @@ public class UserRepository implements UserRepositoryInterface {
                 if(deleteResult.getDeletedCount() > 0) {
                     deleteUserFromNeo4j(idUser);
                     mongoSession.commitTransaction();
-                    this.deleteCache(idUser);
                     return true;
+                } else {
+                    mongoSession.abortTransaction();
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
@@ -354,10 +608,13 @@ public class UserRepository implements UserRepositoryInterface {
         this.registry.timer("neo4j.ops", "query", "delete_user").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
                 session.executeWrite(
-                        tx -> tx.run(
-                                "OPTIONAL MATCH (r:Reader {mid: $userId}) DETACH DELETE r",
-                                parameters("userId", idUser)
-                        )
+                        tx -> {
+                            tx.run(
+                                    "OPTIONAL MATCH (r:Reader {mid: $userId}) DETACH DELETE r",
+                                    parameters("userId", idUser)
+                            );
+                            return null;
+                        }
                 );
             }
         });
@@ -371,18 +628,25 @@ public class UserRepository implements UserRepositoryInterface {
     public boolean deleteAll(List<String> idUsers) {
         Objects.requireNonNull(idUsers);
 
+        List<String> ids = idUsers.stream()
+                .distinct()
+                .filter(Objects::nonNull)
+                .filter(ObjectId::isValid)
+                .toList();
+
+        if(ids.isEmpty()) return true;
+
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
                 DeleteResult deleteResult = this.mongoCollection
                         .deleteMany(
-                                Filters.in("_id", idUsers.stream().map(ObjectId::new).toList())
+                                Filters.in("_id", ids.stream().map(ObjectId::new).toList())
                         );
                 if(deleteResult.getDeletedCount() > 0) {
-                    deleteUsersBatchFromNeo4j(idUsers);
+                    deleteUsersBatchFromNeo4j(ids);
                     mongoSession.commitTransaction();
-                    this.deleteCacheInThread(idUsers);
                     return true;
                 }
             } catch (Exception e) {
@@ -395,13 +659,24 @@ public class UserRepository implements UserRepositoryInterface {
     }
 
     private void deleteUsersBatchFromNeo4j(List<String> idUsers) {
+        Objects.requireNonNull(idUsers);
+
+        List<String> ids = idUsers.stream()
+                .distinct()
+                .filter(Objects::nonNull)
+                .filter(ObjectId::isValid)
+                .toList();
+
         this.registry.timer("neo4j.ops", "query", "delete_user").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
                 session.executeWrite(
-                        tx -> tx.run(
-                                "OPTIONAL MATCH (r:Reader) WHERE r.mid IN $userIds DETACH DELETE r",
-                                parameters("userIds", idUsers)
-                        )
+                        tx -> {
+                            tx.run(
+                                    "OPTIONAL MATCH (r:Reader) WHERE r.mid IN $userIds DETACH DELETE r",
+                                    parameters("userIds", ids)
+                            );
+                            return null;
+                        }
                 );
             }
         });
@@ -415,21 +690,13 @@ public class UserRepository implements UserRepositoryInterface {
     public Optional<User> findById(String idUser) {
         Objects.requireNonNull(idUser);
 
-        User cachedUser = this.cacheService.get(generateCacheKey(idUser), User.class);
-        if (cachedUser != null) {
-            return Optional.of(cachedUser);
-        }
+        if(!ObjectId.isValid(idUser)) return Optional.empty();
 
         User user = this.mongoCollection
                 .find(Filters.eq("_id", new ObjectId(idUser)))
                 .first();
 
-        if (user != null) {
-            this.cacheUser(user);
-            return Optional.of(user);
-        }
-
-        return Optional.empty();
+        return user != null ? Optional.of(user) : Optional.empty();
     }
 
     /**
@@ -444,12 +711,7 @@ public class UserRepository implements UserRepositoryInterface {
                 .find(Filters.eq("username", username))
                 .first();
 
-        if (user != null) {
-            this.cacheUser(user);
-            return Optional.of(user);
-        }
-
-        return Optional.empty();
+        return user != null ? Optional.of(user) : Optional.empty();
     }
 
     /**
@@ -463,12 +725,10 @@ public class UserRepository implements UserRepositoryInterface {
                 .find()
                 .skip(skip)
                 .limit(size)
-                .into(List.of());
+                .into(new ArrayList<>());
 
         long total = this.mongoCollection
                 .countDocuments();
-
-        cacheUserInThread(users);
 
         return new PageResult<>(users, total, page, size);
     }

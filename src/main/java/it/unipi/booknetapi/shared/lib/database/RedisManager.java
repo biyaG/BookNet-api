@@ -44,7 +44,7 @@ public class RedisManager {
 
     @Bean(destroyMethod = "close") // Spring will automatically call .close() on shutdown
     public JedisPool jedisPool(MeterRegistry registry) {
-        System.out.println("Initializing Redis Pool via @Bean...");
+        // System.out.println("Initializing Redis Pool via @Bean...");
 
         JedisPoolConfig poolConfig = new JedisPoolConfig();
         poolConfig.setMaxTotal(128);

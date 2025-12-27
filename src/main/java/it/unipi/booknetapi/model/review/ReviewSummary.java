@@ -5,7 +5,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ReviewEmbed {
+public class ReviewSummary {
     private float rating;
     private int count;
 }

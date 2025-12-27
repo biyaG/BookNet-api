@@ -4,6 +4,7 @@ package it.unipi.booknetapi.repository.book;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.DeleteResult;
@@ -14,18 +15,20 @@ import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
-import it.unipi.booknetapi.model.review.ReviewEmbed;
+import it.unipi.booknetapi.model.review.ReviewSummary;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Repository;
 
 import java.util.*;
 
 import static org.neo4j.driver.Values.parameters;
 
+@Repository
 public class BookRepository implements BookRepositoryInterface {
 
     Logger logger = LoggerFactory.getLogger(BookRepository.class);
@@ -39,9 +42,15 @@ public class BookRepository implements BookRepositoryInterface {
     private static final String CACHE_PREFIX = "book:";
     private static final int CACHE_TTL = 3600; // 1 hour
 
-    public BookRepository(MongoClient mongoClient, MongoCollection<Book> mongoCollection, Neo4jManager neo4jManager, CacheService cacheService, MeterRegistry registry) {
+    public BookRepository(
+            MongoClient mongoClient,
+            MongoDatabase mongoDatabase,
+            Neo4jManager neo4jManager,
+            CacheService cacheService,
+            MeterRegistry registry
+    ) {
         this.mongoClient = mongoClient;
-        this.mongoCollection = mongoCollection;
+        this.mongoCollection = mongoDatabase.getCollection("books", Book.class);
         this.neo4jManager = neo4jManager;
         this.cacheService = cacheService;
         this.registry = registry;
@@ -60,7 +69,7 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     private void cacheBook(Book book) {
-        this.cacheService.save(generateCacheKey(book.get_id().toHexString()), book, CACHE_TTL);
+        this.cacheService.save(generateCacheKey(book.getId().toHexString()), book, CACHE_TTL);
     }
 
     private void cacheBook(List<Book> books) {
@@ -95,15 +104,15 @@ public class BookRepository implements BookRepositoryInterface {
 
             try{
                 boolean success = false;
-                if(book.get_id() == null){
+                if(book.getId() == null){
                     InsertOneResult insertOneResult = this.mongoCollection.insertOne(book); //Upsert Logic (Update or Insert):
                     success = insertOneResult.wasAcknowledged();
                     if(success){
-                        book.set_id(Objects.requireNonNull(insertOneResult.getInsertedId()).asObjectId().getValue());
+                        book.setId(Objects.requireNonNull(insertOneResult.getInsertedId()).asObjectId().getValue());
                     }
                 } else{
                     UpdateResult updateResult = this.mongoCollection.replaceOne(
-                            Filters.eq("_id", book.get_id()), book
+                            Filters.eq("_id", book.getId()), book
                     );
                     success = updateResult.getModifiedCount() > 0;
                 }
@@ -141,14 +150,17 @@ public class BookRepository implements BookRepositoryInterface {
         this.registry.timer("neo4j.ops", "query", "save_book").record(() -> {
             try(Session session = this.neo4jManager.getDriver().session()){
                 String cypher = "CREATE (b:Book {mid: $bookId, title : $title, ratingAvg: $ratingAvg})";
-                session.executeWrite(tx -> tx.run(
-                        cypher,
-                        parameters(
-                                "bookId", book.get_id().toHexString(),
-                                "title", book.getTitle(),
-                                "ratingAvg", book.getRatingReview()//getRatingReview actually gives you the document so think about this latter
-                        )
-                ));
+                session.executeWrite(tx -> {
+                    tx.run(
+                            cypher,
+                            parameters(
+                                    "bookId", book.getId().toHexString(),
+                                    "title", book.getTitle(),
+                                    "ratingAvg", book.getRatingReview()//getRatingReview actually gives you the document so think about this latter
+                            )
+                    );
+                    return null;
+                });
             }
         });
  }
@@ -183,17 +195,20 @@ public class BookRepository implements BookRepositoryInterface {
     private void saveBooksToNeo4j(List<Book> books){
         List<Map<String, Object>> neo4jBatch = new ArrayList<>();
         for(Book book : books){
-            neo4jBatch.add(Map.of("bookId", book.get_id().toHexString(),"title", book.getTitle(), "ratingAvg", book.getRatingReview()));
+            neo4jBatch.add(Map.of("bookId", book.getId().toHexString(),"title", book.getTitle(), "ratingAvg", book.getRatingReview()));
         }
 
         if(!neo4jBatch.isEmpty()){
             this.registry.timer("neo4j.ops", "query", "save_reader").record(() -> {
                 try(Session session = this.neo4jManager.getDriver().session()){
                     session.executeWrite(
-                            tx -> tx.run(
-                                    "UNWIND $books as book CREATE (b:Book {mid:book.bookId, title: book.title, ratingAvg: book.ratingAvg})",
-                                    parameters("books", neo4jBatch)
-                            )
+                            tx -> {
+                                tx.run(
+                                        "UNWIND $books as book CREATE (b:Book {mid:book.bookId, title: book.title, ratingAvg: book.ratingAvg})",
+                                        parameters("books", neo4jBatch)
+                                );
+                                return null;
+                            }
                     );
                 }
             });
@@ -238,24 +253,27 @@ public class BookRepository implements BookRepositoryInterface {
         this.registry.timer("neo4j.ops", "query", "delete_book").record(()->{
             try(Session session = this.neo4jManager.getDriver().session()){
                 session.executeWrite(
-                        tx -> tx.run(
-                                "OPTIONAL MATCH(b:Book {mid: $bookId}) DETACH DELETE r", //CHANGE
-                                parameters("bookId", idBook)
-                        )
+                        tx -> {
+                            tx.run(
+                                    "OPTIONAL MATCH(b:Book {mid: $bookId}) DETACH DELETE r", //CHANGE
+                                    parameters("bookId", idBook)
+                            );
+                            return null;
+                        }
                 );
             }
         });
     }
 
     @Override
-    public boolean addReview(String idBook, String idUser, ReviewEmbed reviewEmbed) {
+    public boolean addReview(String idBook, String idUser, ReviewSummary reviewSummary) {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(idUser);
-        Objects.requireNonNull(reviewEmbed);
+        Objects.requireNonNull(reviewSummary);
 
         UpdateResult updateResult = this.mongoCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idBook)),
-                Updates.push("reviews", reviewEmbed)
+                Updates.push("reviews", reviewSummary)
         );
         return updateResult.getModifiedCount() > 0;
     }
@@ -344,7 +362,7 @@ public class BookRepository implements BookRepositoryInterface {
 
         UpdateResult updateResult = this.mongoCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idBook)),
-                Updates.pull("_id ", Filters.eq("_id", new ObjectId(genre.getId())))
+                Updates.pull("_id ", Filters.eq("_id", genre.getId()))
         );
 
         return handleUpdateResult(updateResult, idBook);
@@ -378,10 +396,13 @@ public class BookRepository implements BookRepositoryInterface {
         this.registry.timer("neo4j.ops", "query", "delete_books").record(() -> {
             try(Session session = this.neo4jManager.getDriver().session()){
                 session.executeWrite(
-                        tx -> tx.run(
-                                "OPTIONAL MATCH (b: Book) WHERE b.mid IN $bookIds DETACH DELETE b", /// why bookIds
-                                parameters("bookIds",idBooks)
-                        )
+                        tx -> {
+                            tx.run(
+                                    "OPTIONAL MATCH (b: Book) WHERE b.mid IN $bookIds DETACH DELETE b", /// why bookIds
+                                    parameters("bookIds",idBooks)
+                            );
+                            return null;
+                        }
                 );
             }
         });
@@ -422,7 +443,11 @@ public class BookRepository implements BookRepositoryInterface {
     public PageResult<Book> findAll(int page, int size) {
         int skip = page * size;
 
-        List<Book> books = this.mongoCollection.find().skip(skip).limit(size).into(List.of());
+        List<Book> books = this.mongoCollection
+                .find()
+                .skip(skip)
+                .limit(size)
+                .into(new ArrayList<>());
 
         long total = this.mongoCollection.countDocuments();
         cacheBookInThread(books); ////

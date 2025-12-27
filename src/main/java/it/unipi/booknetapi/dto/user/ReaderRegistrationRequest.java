@@ -5,10 +5,12 @@ import lombok.*;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserRegistrationRequest {
+public class ReaderRegistrationRequest {
 
     private String name;
     private String username;
     private String password;
+
+    private ReaderPreferenceRequest preference;
 
 }

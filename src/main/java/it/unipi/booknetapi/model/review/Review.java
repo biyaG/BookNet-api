@@ -1,20 +1,31 @@
 package it.unipi.booknetapi.model.review;
 
-
-import lombok.Getter;
-import lombok.Setter;
+import it.unipi.booknetapi.model.user.UserEmbed;
+import it.unipi.booknetapi.shared.model.Source;
+import lombok.*;
+import org.bson.codecs.pojo.annotations.BsonId;
+import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 
 import java.util.Date;
 
-@Getter
-@Setter
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Review {
+
     @Id
-    private long id;
-    private float rating;
-    private int count;
+    @BsonId
+    private ObjectId id;
+
+    private ObjectId bookId;
+    private UserEmbed user;
+
+    private Float rating;
     private String comment;
     private Date dateAdded;
+
+    private Source source;
 
 }

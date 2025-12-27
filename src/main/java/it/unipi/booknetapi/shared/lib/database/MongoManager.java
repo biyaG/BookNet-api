@@ -50,7 +50,7 @@ public class MongoManager {
 
     @Bean
     public MongoClient getMongoClient(MeterRegistry meterRegistry) {
-        System.out.println("Initializing Mongo Client via @Bean...");
+        // System.out.println("Initializing Mongo Client via @Bean...");
 
         CodecRegistry pojoCodecRegistry = fromProviders(PojoCodecProvider.builder().automatic(true).build());
         CodecRegistry codecRegistry = fromRegistries(MongoClientSettings.getDefaultCodecRegistry(), pojoCodecRegistry);
@@ -66,7 +66,7 @@ public class MongoManager {
 
     @Bean
     public MongoDatabase getDatabase(MongoClient mongoClient) {
-        System.out.println("Initializing Mongo Database via @Bean...");
+        // System.out.println("Initializing Mongo Database via @Bean...");
 
         return mongoClient.getDatabase(appConfig.getMongoDatabase());
     }

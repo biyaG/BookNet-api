@@ -1,7 +1,7 @@
 package it.unipi.booknetapi.command.user;
 
 import it.unipi.booknetapi.dto.user.UserCreateRequest;
-import it.unipi.booknetapi.dto.user.UserRegistrationRequest;
+import it.unipi.booknetapi.dto.user.AdminRegistrationRequest;
 import it.unipi.booknetapi.model.user.Role;
 import lombok.*;
 
@@ -19,10 +19,10 @@ public class UserCreateCommand {
     private Role role;
 
 
-    public UserCreateCommand(UserRegistrationRequest userRegistrationRequest) {
-        this.name = userRegistrationRequest.getName();
-        this.username = userRegistrationRequest.getUsername();
-        this.password = userRegistrationRequest.getPassword();
+    public UserCreateCommand(AdminRegistrationRequest adminRegistrationRequest) {
+        this.name = adminRegistrationRequest.getName();
+        this.username = adminRegistrationRequest.getUsername();
+        this.password = adminRegistrationRequest.getPassword();
         this.role = Role.READER;
     }
 

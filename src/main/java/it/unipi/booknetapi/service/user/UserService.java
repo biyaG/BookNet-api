@@ -1,82 +1,103 @@
 package it.unipi.booknetapi.service.user;
 
-import it.unipi.booknetapi.dto.user.UserLoginRequest;
-import it.unipi.booknetapi.dto.user.UserRegistrationRequest;
+import it.unipi.booknetapi.dto.user.ReaderRegistrationRequest;
+import it.unipi.booknetapi.dto.user.AdminRegistrationRequest;
 import it.unipi.booknetapi.dto.user.UserResponse;
 import it.unipi.booknetapi.model.user.Admin;
 import it.unipi.booknetapi.model.user.Reader;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.model.user.User;
+import it.unipi.booknetapi.repository.author.AuthorRepository;
+import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
 import it.unipi.booknetapi.shared.lib.authentication.JwtService;
-import it.unipi.booknetapi.shared.lib.authentication.UserToken;
+import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.lib.encryption.EncryptionManager;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 @Service
 public class UserService {
 
     private final UserRepository userRepository;
+    private final AuthorRepository authorRepository;
+    private final BookRepository bookRepository;
+    private final CacheService cacheService;
     private final EncryptionManager encryptionManager;
     private final JwtService jwtService;
 
-    public UserService(UserRepository userRepository, EncryptionManager encryptionManager, JwtService jwtService) {
+
+    private static final String CACHE_PREFIX = "user:";
+    private static final int CACHE_TTL = 3600; // 1 hour
+
+
+    public UserService(
+            UserRepository userRepository,
+            AuthorRepository authorRepository,
+            BookRepository bookRepository,
+            CacheService cacheService,
+            EncryptionManager encryptionManager,
+            JwtService jwtService
+    ) {
         this.userRepository = userRepository;
+        this.authorRepository = authorRepository;
+        this.bookRepository = bookRepository;
+        this.cacheService = cacheService;
         this.encryptionManager = encryptionManager;
         this.jwtService = jwtService;
     }
 
-    public UserResponse registerAdmin(UserRegistrationRequest registrationRequest) {
-        Admin admin = new Admin();
-        admin.setName(registrationRequest.getName());
-        admin.setUsername(registrationRequest.getUsername());
-        admin.setPassword(encryptionManager.encrypt(registrationRequest.getPassword()));
-        admin.setRole(Role.ADMIN);
-        return new UserResponse(userRepository.insertWithThread(admin));
+
+    private static String generateCacheKey(String idUser) {
+        return CACHE_PREFIX + idUser;
     }
 
-    public UserResponse registerReader(UserRegistrationRequest registrationRequest) {
-        Reader reader = new Reader();
-        reader.setName(registrationRequest.getName());
-        reader.setUsername(registrationRequest.getUsername());
-        reader.setPassword(encryptionManager.encrypt(registrationRequest.getPassword()));
-        reader.setRole(Role.READER);
-        return new UserResponse(userRepository.insertWithThread(reader));
+    private void cacheUser(UserResponse user) {
+        this.cacheService.save(generateCacheKey(user.getId()), user, CACHE_TTL);
     }
 
-    public String login(UserLoginRequest loginRequest) {
-        User user = userRepository.findByUsername(loginRequest.getUsername())
-                .orElse(null);
-        if (user == null) {
-            return null;
-        }
-
-        if (!encryptionManager.checkPassword(loginRequest.getPassword(), user.getPassword())) {
-            return null;
-        }
-
-        return jwtService.createToken(user);
+    private void cacheUser(List<UserResponse> users) {
+        users.forEach(this::cacheUser);
     }
 
-    public String refreshAccessToken(String token) {
-        // add more control like fetch the user from db to ensure they still exist/aren't banned etc.
-        return jwtService.refreshToken(token);
+    private void cacheUserInThread(List<UserResponse> users) {
+        Thread thread = new Thread(() -> cacheUser(users));
+        thread.start();
     }
 
-    public UserToken getUserToken(String token) {
-        return jwtService.validateToken(token);
+    private void deleteCache(String idUser) {
+        this.cacheService.delete(generateCacheKey(idUser));
+    }
+
+    private void deleteCache(List<String> idUsers) {
+        idUsers.forEach(this::deleteCache);
+    }
+
+    private void deleteCacheInThread(List<String> idUsers) {
+        Thread thread = new Thread(() -> deleteCache(idUsers));
+        thread.start();
     }
 
 
 
     public UserResponse getUserById(String id) {
+
+        try {
+            UserResponse userResponse = this.cacheService.get(generateCacheKey(id), UserResponse.class);
+            if(userResponse != null) return userResponse;
+        } catch (Exception ignored) {}
+
         User user =  userRepository.findById(id).orElse(null);
 
         if(user == null) {
             return null;
         }
 
-        return new UserResponse(user);
+        UserResponse userResponse = new UserResponse(user);
+        this.cacheUser(userResponse);
+
+        return userResponse;
     }
 
 }

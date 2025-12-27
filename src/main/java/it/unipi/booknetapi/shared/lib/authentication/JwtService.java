@@ -38,8 +38,16 @@ public class JwtService {
     }
 
     public String refreshToken(String token) {
-        UserToken userToken = validateToken(token);
+        UserToken userToken = validateToken(token.replace("Bearer ", ""));
         return createToken(userToken);
+    }
+
+    private Date extractExpiration(String token) {
+        return JWT.decode(token).getExpiresAt();
+    }
+
+    public boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
     }
 
     public UserToken validateToken(String token) {
