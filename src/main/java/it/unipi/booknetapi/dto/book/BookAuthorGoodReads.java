@@ -14,7 +14,6 @@ public class BookAuthorGoodReads {
 
     @JsonProperty("author_id")
     private String authorId;
-
     private String role;
 
 }

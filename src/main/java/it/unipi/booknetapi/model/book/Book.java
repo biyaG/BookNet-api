@@ -1,5 +1,6 @@
 package it.unipi.booknetapi.model.book;
 
+import it.unipi.booknetapi.command.book.BookCreateCommand;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.review.Review;
@@ -43,6 +44,21 @@ public class Book {
     private SourceFromEnum source;
     private ExternalId externalId;
 
+    public Book(BookCreateCommand command) {
+        this.title = command.getTitle();
+        this.description = command.getDescription();
+        this.images = command.getImages();
+        this.isbn = command.getIsbn();
+        this.isbn13 = command.getIsbn13();
+        this.subtitle = command.getSubtitle();
+        this.num_pages = command.getNum_pages();
+        this.publication_date = command.getPublication_date();
+        this.source = command.getSource();
+        this.externalId = command.getExternalId();
+        this.language = command.getLanguage();
+        this.preview = command.getPreview();
+        this.publishers = command.getPublishers();
+    }
 
 
 }
