@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.dto.author;
 
 import it.unipi.booknetapi.model.author.Author;
+import it.unipi.booknetapi.model.author.AuthorEmbed;
 import lombok.*;
 
 @Data
@@ -21,4 +22,6 @@ public class AuthorSimpleResponse {
         this.imageUrl = author.getImageUrl();
     }
 
+    public AuthorSimpleResponse(AuthorEmbed authorEmbed) {
+    }
 }
