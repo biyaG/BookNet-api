@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.model.author;
 
 import it.unipi.booknetapi.command.author.AuthorCreateCommand;
+import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.shared.model.ExternalId;
 import lombok.*;
@@ -33,5 +34,12 @@ public class Author {
         this.imageUrl = command.getImageUrl();
 
         this.externalId = command.getExternalId();
+    }
+
+    public Author(AuthorGoodReads author) {
+        this.name = author.getName();
+
+        this.externalId = new ExternalId();
+        this.externalId.setGoodReads(author.getAuthorId());
     }
 }

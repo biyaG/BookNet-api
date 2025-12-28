@@ -1,15 +1,16 @@
 package it.unipi.booknetapi.repository.author;
 
+import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+import com.mongodb.client.model.*;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
+import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
@@ -123,7 +124,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
                 mongoSession.commitTransaction();
 
-                logger.info("Many authors inserted successfully: {}", authors.size());
+                logger.debug("Many authors inserted successfully: {}", authors.size());
 
                 return authors;
             } catch (Exception e) {
@@ -154,6 +155,105 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                             }
                     );
                 }
+            });
+        }
+    }
+
+    /**
+     * @param importedAuthors the authors to import
+     */
+    @Override
+    public void importAuthors(List<AuthorGoodReads> importedAuthors) {
+        logger.debug("Importing {} authors from GoodReads", importedAuthors.size());
+
+        // 1. Perform the MongoDB Bulk Upsert (The code we wrote previously)
+        bulkUpset(importedAuthors);
+
+        // 2. Extract the list of External IDs to query MongoDB
+        List<String> externalIds = importedAuthors.stream()
+                .map(AuthorGoodReads::getAuthorId)
+                .toList();
+
+        // 3. Fetch the ACTUAL documents from MongoDB to get the real _id
+        //    (Using the POJO collection 'mongoCollection')
+        List<Map<String, Object>> neo4jBatch = new ArrayList<>();
+
+        this.mongoCollection.find(Filters.in("externalId.kaggle", externalIds))
+                .projection(Projections.include("_id", "name")) // Optimize: fetch only needed fields
+                .forEach(author -> {
+                    // Map MongoDB Author POJO to Neo4j Map
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", author.getId().toHexString()); // The crucial MongoDB ID
+                    map.put("name", author.getName());
+                    neo4jBatch.add(map);
+                });
+
+        // 4. Send to Neo4j
+        if (!neo4jBatch.isEmpty()) {
+            bulkUpdateAuthorsInNeo4j(neo4jBatch);
+        }
+    }
+
+    public void bulkUpset(List<AuthorGoodReads> authorsGoodReads) {
+        List<WriteModel<Author>> writes = new ArrayList<>();
+
+        for (AuthorGoodReads source : authorsGoodReads) {
+
+            // 2. Map the ID from JSON (String) to your Nested Object structure
+            String goodReadsId = source.getAuthorId();
+
+            // 3. Create the Update Model
+            // Even though we use POJOs, we use 'Updates.set' to avoid overwriting the 'books' list
+            writes.add(new UpdateOneModel<>(
+                    // Filter: Find author by external Kaggle ID
+                    Filters.eq("externalId.goodReads", goodReadsId),
+
+                    // Update: Combine multiple operations
+                    Updates.combine(
+                            // ALWAYS update these fields (e.g. fix name typos)
+                            Updates.set("name", source.getName()),
+
+                            // ON INSERT only: Generate ID and set the external key
+                            // Updates.setOnInsert("_id", new ObjectId()),
+                            Updates.setOnInsert("externalId.goodReads", goodReadsId),
+                            Updates.setOnInsert("externalId.amazon", null),
+                            Updates.setOnInsert("externalId.googleBooks", null),
+                            Updates.setOnInsert("externalId.kaggle", null),
+
+                            // ON INSERT only: Initialize empty books list so it's not null
+                            Updates.setOnInsert("description", null),
+                            Updates.setOnInsert("imageUrl", null),
+                            Updates.setOnInsert("books", List.of())
+                    ),
+
+                    // Options: Create if it doesn't exist
+                    new UpdateOptions().upsert(true)
+            ));
+        }
+
+        // 4. Execute on the typed collection
+        if (!writes.isEmpty()) {
+            BulkWriteResult result = this.mongoCollection
+                    .bulkWrite(writes, new BulkWriteOptions().ordered(false));
+        }
+    }
+
+    // In your Neo4j Service or Repository
+    private void bulkUpdateAuthorsInNeo4j(List<Map<String, Object>> authorsBatch) {
+        // Cypher:
+        // 1. UNWIND expands the list into rows.
+        // 2. MERGE finds the author by ID or creates them.
+        // 3. SET updates the name (in case it changed in MongoDB).
+        String query = """
+        UNWIND $batch AS row
+        MERGE (a:Author {mid: row.id})
+        SET a.name = row.name
+        """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            session.executeWrite(tx -> {
+                tx.run(query, parameters("batch", authorsBatch));
+                return null;
             });
         }
     }
@@ -291,7 +391,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
      * @return true if all authors were deleted, false otherwise
      */
     @Override
-    public boolean deleteAll(List<String> idAuthors) {
+    public boolean delete(List<String> idAuthors) {
         Objects.requireNonNull(idAuthors);
 
         List<String> ids = idAuthors.stream()

@@ -1,5 +1,6 @@
 package it.unipi.booknetapi.repository.author;
 
+import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.shared.model.PageResult;
@@ -13,6 +14,8 @@ public interface AuthorRepositoryInterface {
     Author insert(Author author);
     List<Author> insert(List<Author> authors);
 
+    void importAuthors(List<AuthorGoodReads> importedAuthors);
+
     boolean updateDescription(String idAuthor, String newDescription);
     boolean updateImage(String idAuthor, String newImageUrl);
 
@@ -21,7 +24,7 @@ public interface AuthorRepositoryInterface {
     boolean removeBook(String idAuthor, String idBook);
 
     boolean delete(String idAuthor);
-    boolean deleteAll(List<String> idAuthors);
+    boolean delete(List<String> idAuthors);
 
     Optional<Author> findById(String idAuthor);
 

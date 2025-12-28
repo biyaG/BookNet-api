@@ -79,6 +79,16 @@ public class AuthorService {
         return result;
     }
 
+    public boolean deleteMultiAuthors(AuthorIdsDeleteCommand command) {
+        if(command.getIds() == null || command.getIds().isEmpty()) return false;
+
+        boolean result = this.authorRepository.delete(command.getIds());
+
+        command.getIds().forEach(this::deleteCache);
+
+        return result;
+    }
+
     public PageResult<AuthorSimpleResponse> getAllAuthors(AuthorListCommand command) {
 
         PageResult<Author> result = this.authorRepository
