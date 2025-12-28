@@ -57,7 +57,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public Author insert(Author author) {
         Objects.requireNonNull(author);
 
-        logger.debug("Inserting author: {}", author);
+        logger.debug("[REPOSITORY] [AUTHOR] [INSERT] author: {}", author);
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -74,7 +74,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("Error during transaction: {}", e.getMessage());
+                logger.error("[REPOSITORY] [AUTHOR] [INSERT] Error during transaction: {}", e.getMessage());
             }
         }
 
@@ -112,7 +112,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         Objects.requireNonNull(authors);
         if(authors.isEmpty()) return List.of();
 
-        logger.debug("Inserting many author: {}", authors.size());
+        logger.debug("[REPOSITORY] [AUTHOR] [INSERT MANY] author size: {}", authors.size());
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -124,7 +124,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
                 mongoSession.commitTransaction();
 
-                logger.debug("Many authors inserted successfully: {}", authors.size());
+                logger.debug("[REPOSITORY] [AUTHOR] [INSERT] Many authors inserted successfully: {}", authors.size());
 
                 return authors;
             } catch (Exception e) {
@@ -163,8 +163,8 @@ public class AuthorRepository implements AuthorRepositoryInterface {
      * @param importedAuthors the authors to import
      */
     @Override
-    public void importAuthors(List<AuthorGoodReads> importedAuthors) {
-        logger.debug("Importing {} authors from GoodReads", importedAuthors.size());
+    public List<Author> importAuthors(List<AuthorGoodReads> importedAuthors) {
+        logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] Importing {} authors from GoodReads", importedAuthors.size());
 
         // 1. Perform the MongoDB Bulk Upsert (The code we wrote previously)
         bulkUpset(importedAuthors);
@@ -178,20 +178,27 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         //    (Using the POJO collection 'mongoCollection')
         List<Map<String, Object>> neo4jBatch = new ArrayList<>();
 
-        this.mongoCollection.find(Filters.in("externalId.kaggle", externalIds))
+
+        List<Author> authors = this.mongoCollection.find(Filters.in("externalId.kaggle", externalIds))
                 .projection(Projections.include("_id", "name")) // Optimize: fetch only needed fields
-                .forEach(author -> {
+                .into(new ArrayList<>());
+
+        authors.forEach(
+                author -> {
                     // Map MongoDB Author POJO to Neo4j Map
                     Map<String, Object> map = new HashMap<>();
                     map.put("id", author.getId().toHexString()); // The crucial MongoDB ID
                     map.put("name", author.getName());
                     neo4jBatch.add(map);
-                });
+                }
+        );
 
         // 4. Send to Neo4j
         if (!neo4jBatch.isEmpty()) {
             bulkUpdateAuthorsInNeo4j(neo4jBatch);
         }
+
+        return authors;
     }
 
     public void bulkUpset(List<AuthorGoodReads> authorsGoodReads) {
@@ -317,22 +324,36 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     }
 
     /**
-     * @param idAuthor
-     * @param book
-     * @return
+     * @param idAuthor author's id
+     * @param book book to add to the author's list of books
+     * @return true if the book was added, false otherwise
      */
     @Override
     public boolean addBook(String idAuthor, BookEmbed book) {
+        Objects.requireNonNull(idAuthor);
+        Objects.requireNonNull(book);
+
+        logger.debug("[REPOSITORY] [AUTHOR] [ADD BOOK] Adding book {} to author {}", book.getId(), idAuthor);
+
+        // TODO: to complete
+
         return false;
     }
 
     /**
-     * @param idAuthor
-     * @param idBook
-     * @return
+     * @param idAuthor author's id
+     * @param idBook book's id to remove from the author's list of books
+     * @return true if the book was removed, false otherwise
      */
     @Override
     public boolean removeBook(String idAuthor, String idBook) {
+        Objects.requireNonNull(idAuthor);
+        Objects.requireNonNull(idBook);
+
+        logger.debug("[REPOSITORY] [AUTHOR] [REMOVE BOOK] Removing book {} from author {}", idBook, idAuthor);
+
+        // TODO: to complete
+
         return false;
     }
 
@@ -344,7 +365,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public boolean delete(String idAuthor) {
         Objects.requireNonNull(idAuthor);
 
-        logger.debug("Deleting author: {}", idAuthor);
+        logger.debug("[REPOSITORY] [AUTHOR] [DELETE] Deleting author: {}", idAuthor);
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -361,7 +382,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("Error during transaction: {}", e.getMessage());
+                logger.error("[REPOSITORY] [AUTHOR] [DELETE] Error during transaction: {}", e.getMessage());
             }
         }
 
@@ -394,6 +415,8 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public boolean delete(List<String> idAuthors) {
         Objects.requireNonNull(idAuthors);
 
+        logger.debug("[REPOSITORY] [AUTHOR] [DELETE MANY] Deleting {} authors", idAuthors.size());
+
         List<String> ids = idAuthors.stream()
                 .distinct()
                 .filter(Objects::nonNull)
@@ -417,7 +440,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("Error during transaction: {}", e.getMessage());
+                logger.error("[REPOSITORY] [AUTHOR] [DELETE MANY] Error during transaction: {}", e.getMessage());
             }
         }
 
@@ -456,16 +479,16 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public Optional<Author> findById(String idAuthor) {
         Objects.requireNonNull(idAuthor);
 
-        logger.debug("Retrieving author: {}", idAuthor);
+        logger.debug("[REPOSITORY] [AUTHOR] [GET] Retrieving author: {}", idAuthor);
 
         Author author = this.mongoCollection
                 .find(Filters.eq("_id", new ObjectId(idAuthor)))
                 .first();
 
         if (author != null) {
-            logger.debug("Author successfuly retrieving");
+            logger.debug("[REPOSITORY] [AUTHOR] [GET] Author successfuly retrieving");
         } else {
-            logger.debug("Author not found");
+            logger.debug("[REPOSITORY] [AUTHOR] [GET] Author not found");
         }
 
         return author != null ? Optional.of(author) : Optional.empty();
@@ -476,6 +499,8 @@ public class AuthorRepository implements AuthorRepositoryInterface {
      */
     @Override
     public PageResult<Author> findAll(int page, int size) {
+        logger.debug("[REPOSITORY] [AUTHOR] [GET ALL] Retrieving all authors with pagination: page {} size {}", page, size);
+
         int skip = page * size;
 
         List<Author> authors = this.mongoCollection
@@ -497,6 +522,8 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public List<Author> findAll(List<String> idAuthors) {
         Objects.requireNonNull(idAuthors);
 
+        logger.debug("[REPOSITORY] [AUTHOR] [GET MANY] Retrieving {} authors", idAuthors.size());
+
         List<ObjectId> ids = idAuthors.stream()
                 .filter(Objects::nonNull)
                 .filter(ObjectId::isValid)
@@ -513,6 +540,8 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     @Override
     public List<Author> find(List<ObjectId> idAuthors) {
         Objects.requireNonNull(idAuthors);
+
+        logger.debug("[REPOSITORY] [AUTHOR] [GET MANY] Retrieving {} authors", idAuthors.size());
 
         if(idAuthors.isEmpty()) return List.of();
 

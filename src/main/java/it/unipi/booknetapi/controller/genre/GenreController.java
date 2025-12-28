@@ -1,20 +1,27 @@
 package it.unipi.booknetapi.controller.genre;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.genre.*;
 import it.unipi.booknetapi.dto.genre.GenreCreateRequest;
 import it.unipi.booknetapi.dto.genre.GenreResponse;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
+import it.unipi.booknetapi.service.fetch.ImportEntityType;
+import it.unipi.booknetapi.service.fetch.ImportService;
 import it.unipi.booknetapi.service.genre.GenreService;
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
 import it.unipi.booknetapi.shared.model.SearchRequest;
+import it.unipi.booknetapi.shared.model.Source;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -25,11 +32,35 @@ public class GenreController {
 
     private final AuthService authService;
     private final GenreService genreService;
+    private final ImportService importService;
 
-    public GenreController(AuthService authService, GenreService genreService) {
+    public GenreController(
+            AuthService authService,
+            GenreService genreService,
+            ImportService importService
+    ) {
         this.authService = authService;
         this.genreService = genreService;
+        this.importService = importService;
     }
+
+
+    @PostMapping(value = "upload/goodreads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Import genre", description = "Uploads a file containing genres in NDJSON format.")
+    public ResponseEntity<String> importGenresFromGoodreads(
+            @Parameter(
+                    description = "The NDJSON file to upload",
+                    content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
+            )
+            @RequestParam("file") MultipartFile file
+    ) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("File is empty");
+        }
+
+        return ResponseEntity.ok(this.importService.importData(Source.GOOD_READS, ImportEntityType.GOOD_READS_BOOK_GENRE, file));
+    }
+
 
     @GetMapping("/{idGenre}")
     @Operation(summary = "Get genre information")

@@ -14,7 +14,7 @@ public interface AuthorRepositoryInterface {
     Author insert(Author author);
     List<Author> insert(List<Author> authors);
 
-    void importAuthors(List<AuthorGoodReads> importedAuthors);
+    List<Author> importAuthors(List<AuthorGoodReads> importedAuthors);
 
     boolean updateDescription(String idAuthor, String newDescription);
     boolean updateImage(String idAuthor, String newImageUrl);
