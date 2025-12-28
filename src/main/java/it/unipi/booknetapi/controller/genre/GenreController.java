@@ -72,6 +72,7 @@ public class GenreController {
         GenreIdsDeleteCommand command = GenreIdsDeleteCommand.builder()
                 .ids(ids)
                 .build();
+        command.setUserToken(userToken);
 
         boolean result = this.genreService.deleteAllGenres(command);
 
