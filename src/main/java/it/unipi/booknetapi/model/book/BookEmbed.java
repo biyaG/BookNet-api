@@ -16,6 +16,7 @@ public class BookEmbed {
     private String title;
     private String description;
     private List<String> images;
+//    private String externalBookId; //We should have this because that is how we can link the similarbooks
 
     public BookEmbed(Book book) {
         this.id = book.getId();

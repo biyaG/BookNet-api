@@ -2,9 +2,11 @@ package it.unipi.booknetapi.command.book;
 
 import it.unipi.booknetapi.dto.book.BookCreateRequest;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.book.FormatTypeEnum;
 import it.unipi.booknetapi.model.book.SourceFromEnum;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
+import it.unipi.booknetapi.model.review.ReviewSummary;
 import it.unipi.booknetapi.shared.command.BaseCommand;
 import it.unipi.booknetapi.shared.model.ExternalId;
 import lombok.*;
@@ -30,6 +32,9 @@ public class BookCreateCommand extends BaseCommand {
 
     private List<AuthorEmbed> authors;
     private List<GenreEmbed> genres;
+    private List<BookEmbed> similar_books;
+
+    private ReviewSummary ratingReview;
 
     private String isbn;
     private String isbn13;
@@ -39,6 +44,8 @@ public class BookCreateCommand extends BaseCommand {
     private FormatTypeEnum formats;
     private SourceFromEnum source;
     private ExternalId externalId;
+    private FormatTypeEnum format;
+
 
     public BookCreateCommand(BookCreateRequest request){
         this.title = request.getTitle();
@@ -53,12 +60,14 @@ public class BookCreateCommand extends BaseCommand {
         this.subtitle = request.getSubtitle();
         this.num_pages = request.getNum_pages();
         this.publication_date = request.getPublication_date();
-        this.formats = request.getFormats();
         this.source = request.getSource();
         this.externalId = request.getExternalId();
 
         this.genres = request.getGenres();
         this.authors = request.getAuthors();
+        this.ratingReview = request.getRatingReview();
+        this.format = request.getFormat();
+        this.similar_books = request.getSimilar_books();
     }
 
 }

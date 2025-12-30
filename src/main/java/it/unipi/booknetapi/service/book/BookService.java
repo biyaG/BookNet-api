@@ -9,6 +9,9 @@ import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
+
 
 @Service
 public class BookService {
@@ -33,7 +36,7 @@ public class BookService {
     private void deleteCache(String idBook){ this.cacheService.delete(generateCacheKey(idBook));}
 
     public BookResponse saveBook(BookCreateCommand command){
-        if(command.getTitle() == null) return null;
+        if(command.getTitle() == null || command.getTitle().isBlank()) return null;
 
         Book bookNew = new Book(command);
         Book book = this.bookRepository.save(bookNew);
@@ -43,6 +46,29 @@ public class BookService {
         BookResponse bookResponse = new BookResponse(book);
         this.cacheBook(bookResponse);
         return bookResponse;
+    }
+
+    public List<BookResponse> importBooks(List<BookCreateCommand> commands) {
+        if (commands == null || commands.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 1. Convert the list of Commands into a list of Book Entities
+        List<Book> booksToSave = commands.stream()
+                .map(Book::new) // Uses your constructor: public Book(BookCreateCommand command)
+                .toList();
+
+        // 2. Save all books to the database in one batch
+        List<Book> savedBooks = this.bookRepository.saveAll(booksToSave);
+
+        // 3. Convert saved Entities to Responses and Cache them
+        return savedBooks.stream()
+                .map(book -> {
+                    BookResponse response = new BookResponse(book);
+                    this.cacheBook(response); // Caching each book for fast retrieval later
+                    return response;
+                })
+                .toList();
     }
 
     public BookResponse getBookById(BookGetCommand command) {
@@ -61,6 +87,7 @@ public class BookService {
 
         return bookResponse;
     }
+
 
     public boolean deleteBookById(BookDeleteCommand command){
         if(command.getId() == null)return false;
@@ -81,6 +108,8 @@ public class BookService {
                 result.getPageSize()
         );
     }
+
+
 
 //    public List<BookSimpleResponse> getBooks(BookIdsListCommand command){
 //        Objects.requireNonNull(command.getIds());

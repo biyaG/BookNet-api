@@ -30,7 +30,7 @@ public class Book {
     private String description;
     private Integer num_pages;
     private Date publication_date;
-    private ReviewSummary review; //review is a document
+//    private ReviewSummary review; //review is a document
     private List<String> language = new ArrayList<>();
     private List<String> images = new ArrayList<>();
     private List<String> preview = new ArrayList<>();
@@ -39,8 +39,9 @@ public class Book {
     private List<AuthorEmbed> authors = new ArrayList<>();
     private List<GenreEmbed> genres = new ArrayList<>();
     private List<BookEmbed> similar_books = new ArrayList<>();
-    private List<ReviewSummary> ratingReview = new ArrayList<>();
-    private FormatTypeEnum formats;
+//    private List<ReviewSummary> ratingReview = new ArrayList<>();
+    private ReviewSummary ratingReview;
+    private FormatTypeEnum format;
     private SourceFromEnum source;
     private ExternalId externalId;
 
@@ -58,6 +59,7 @@ public class Book {
         this.language = command.getLanguage();
         this.preview = command.getPreview();
         this.publishers = command.getPublishers();
+        this.similar_books = command.getSimilar_books();
     }
 
 

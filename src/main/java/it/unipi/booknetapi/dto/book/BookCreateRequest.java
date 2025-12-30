@@ -1,9 +1,11 @@
 package it.unipi.booknetapi.dto.book;
 
 import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.book.FormatTypeEnum;
 import it.unipi.booknetapi.model.book.SourceFromEnum;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
+import it.unipi.booknetapi.model.review.ReviewSummary;
 import it.unipi.booknetapi.shared.model.ExternalId;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
@@ -35,8 +37,11 @@ public class BookCreateRequest {
     // Direct embedding from the request
     private List<AuthorEmbed> authors;
     private List<GenreEmbed> genres;
+    private List<BookEmbed> similar_books;
 
-    private FormatTypeEnum formats;
+    private FormatTypeEnum format;
     private SourceFromEnum source;
     private ExternalId externalId;
+    private ReviewSummary ratingReview;
+
 }
