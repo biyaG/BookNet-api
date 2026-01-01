@@ -35,7 +35,7 @@ public class Book {
     private List<String> images = new ArrayList<>();
     private List<String> preview = new ArrayList<>();
     private List<String> publishers = new ArrayList<>();
-    private List<Review> reviews = new ArrayList<>();
+    private List<String> reviews = new ArrayList<>(); // we should change List<Review> to List<String> to save the ids only for the review
     private List<AuthorEmbed> authors = new ArrayList<>();
     private List<GenreEmbed> genres = new ArrayList<>();
     private List<BookEmbed> similar_books = new ArrayList<>();

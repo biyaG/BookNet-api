@@ -157,20 +157,22 @@ public class ImportService {
             cmd.setTitle(raw.getTitle());
             cmd.setDescription(raw.getDescription());
             cmd.setIsbn(raw.getIsbn());
+            cmd.setIsbn13(raw.getIsbn13());
             cmd.setSource(SourceFromEnum.GOODREADS);
             // Default to empty list if null to prevent NullPointerException
             cmd.setImages(raw.getImageUrl() != null ? List.of(raw.getImageUrl()) : new ArrayList<>());
             cmd.setLanguage(raw.getLanguage_code() != null ? List.of(raw.getLanguage_code()) : List.of(raw.getCountryCode()));
             cmd.setPreview(raw.getUrl());
-//            cmd.setExternalId(raw.getExternalId());
+
+            //cmd.setExternalId(raw.getExternalId());
 
             ReviewSummary reviewRating = new ReviewSummary();
             reviewRating.setRating(Float.parseFloat(raw.getAverageRating()));
             reviewRating.setCount(Integer.parseInt(raw.getRating_count()));
             cmd.setRatingReview(reviewRating);
 
-//            cmd.setSimilar_booksIds(raw.getSimilarBooks().externalBookId);
-//            I didnt add the above code because we need to add another field on the bookembed or on the book model so that it would be easier for us to link the similar books
+            //cmd.setSimilar_booksIds(raw.getSimilarBooks().externalBookId);
+            //I didn't add the above code because we need to add another field on the book-embed or on the book model so that it would be easier for us to link the similar books
             return cmd;
         }).toList();
 
@@ -247,7 +249,7 @@ public class ImportService {
 
                     logger.debug("Importing GoodReads authors completed.");
                 } catch (Exception e) {
-//                    e.printStackTrace();
+                //e.printStackTrace();
                     String message = "Error processing file: " + e.getMessage();
                     logger.error(message);
                 }
