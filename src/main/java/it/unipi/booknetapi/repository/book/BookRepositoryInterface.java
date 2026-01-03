@@ -4,8 +4,8 @@ import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.review.Review;
-import it.unipi.booknetapi.model.review.ReviewSummary;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.types.ObjectId;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,7 +14,7 @@ public interface BookRepositoryInterface {
     Book save(Book book);
     List<Book> saveAll(List<Book> books);
     boolean deleteBook(String idBook);
-    boolean deleteAllBooks(List<String> idBooks);
+    boolean deleteAllBooks(List<ObjectId> idBooks);
     boolean addReview(Review review);
     boolean removeReview(String idBook, String idUser, String idReview);
     boolean updateImage(String idBook, String newImageUrl);

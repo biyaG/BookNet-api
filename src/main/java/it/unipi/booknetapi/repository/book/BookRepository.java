@@ -89,8 +89,8 @@ public class BookRepository implements BookRepositoryInterface {
         idBooks.forEach(this::deleteCache);
     }
 
-    private void deleteCacheInThread(List<String> idBooks) {
-        Thread thread = new Thread(() -> deleteCache(idBooks));
+    private void deleteCacheInThread(List<ObjectId> idBooks) {
+        Thread thread = new Thread(() -> deleteCache(idBooks.toString()));
         thread.start();
     }
 
@@ -105,7 +105,7 @@ public class BookRepository implements BookRepositoryInterface {
             session.startTransaction();
 
             try{
-                boolean success = false;
+                boolean success;
                 if(book.getId() == null){
                     InsertOneResult insertOneResult = this.mongoCollection.insertOne(book); //Upsert Logic (Update or Insert):
                     success = insertOneResult.wasAcknowledged();
@@ -383,14 +383,17 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     @Override
-    public boolean deleteAllBooks(List<String> idBooks){
+    public boolean deleteAllBooks(List<ObjectId> idBooks){
         Objects.requireNonNull(idBooks);
 
         try (ClientSession session = this.mongoClient.startSession()){
             session.startTransaction();
             try{
                 DeleteResult deleteResult = this.mongoCollection.deleteMany(
-                        Filters.in("_id",idBooks.stream().map(ObjectId::new).toList())
+                        Filters.in("_id",idBooks) //Because ID books is an objectId
+
+                        // Filters.in("_id",idBooks.stream().map(ObjectId::new).toList())
+
                 );
                 if(deleteResult.getDeletedCount() > 0){
                     deleteBookBatchFromNeo4j(idBooks);
@@ -406,7 +409,7 @@ public class BookRepository implements BookRepositoryInterface {
         return false;
     }
 
-    private void deleteBookBatchFromNeo4j(List<String> idBooks){
+    private void deleteBookBatchFromNeo4j(List<ObjectId> idBooks){
         this.registry.timer("neo4j.ops", "query", "delete_books").record(() -> {
             try(Session session = this.neo4jManager.getDriver().session()){
                 session.executeWrite(

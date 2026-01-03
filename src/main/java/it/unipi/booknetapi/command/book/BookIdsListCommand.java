@@ -2,6 +2,7 @@ package it.unipi.booknetapi.command.book;
 
 import it.unipi.booknetapi.shared.command.BaseCommand;
 import lombok.*;
+import org.bson.types.ObjectId;
 
 import java.util.List;
 
@@ -14,5 +15,5 @@ import java.util.List;
 
 public class BookIdsListCommand extends BaseCommand {
 
-    private List<String> ids;
+    private List<ObjectId> ids;
 }

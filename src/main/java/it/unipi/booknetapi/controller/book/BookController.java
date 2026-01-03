@@ -6,7 +6,6 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import it.unipi.booknetapi.command.book.*;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
-import it.unipi.booknetapi.command.review.ReviewByReaderListCommand;
 import it.unipi.booknetapi.command.review.ReviewCreateCommand;
 import it.unipi.booknetapi.dto.book.BookCreateRequest;
 import it.unipi.booknetapi.dto.book.BookResponse;
@@ -24,11 +23,14 @@ import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
 import it.unipi.booknetapi.shared.model.Source;
 
+import org.bson.types.ObjectId;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 
 @RestController
@@ -141,9 +143,9 @@ public class BookController {
 
     }
 
-    /*@PostMapping("/delete")
+    @PostMapping("/delete")
     @Operation(summary = "Delete Multiple Book")
-    public ResponseEntity<String> deleteMultipleBook(@RequestBody List<String> ids, @RequestHeader("Authorization") String token){
+    public ResponseEntity<String> deleteMultipleBook(@RequestBody List<ObjectId> ids, @RequestHeader("Authorization") String token){
         UserToken userToken = authService.getUserToken(token);
         if(userToken == null || userToken.getRole() != Role.ADMIN){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -154,10 +156,10 @@ public class BookController {
                 .build();
         command.setUserToken(userToken);
 
-        boolean result = this.bookService.deleteBookById(command);
+        boolean result = this.bookService.deleteManyBooks(command);
 
         return ResponseEntity.ok(result ? "Books deleted successfully" : "Error deleting books");
-    }*/
+    }
 
     @PostMapping
     @Operation(summary = "Create book")

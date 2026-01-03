@@ -2,6 +2,7 @@ package it.unipi.booknetapi.command.book;
 
 import it.unipi.booknetapi.shared.command.BaseCommand;
 import lombok.*;
+import org.bson.types.ObjectId;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,6 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 
 public class BookDeleteManyCommand extends BaseCommand {
-    private List<String> ids = new ArrayList<>();
+    private List<ObjectId> ids = new ArrayList<>();
 
 }

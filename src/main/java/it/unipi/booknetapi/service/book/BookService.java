@@ -7,6 +7,7 @@ import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -34,6 +35,11 @@ public class BookService {
     }
 
     private void deleteCache(String idBook){ this.cacheService.delete(generateCacheKey(idBook));}
+
+    private void deleteCache(List<ObjectId> idBooks) {
+        idBooks.forEach(id -> deleteCache(id.toString()));
+    }
+
 
     public BookResponse saveBook(BookCreateCommand command){
         if(command.getTitle() == null || command.getTitle().isBlank()) return null;
@@ -96,7 +102,12 @@ public class BookService {
         return result;
     }
 
-//    public boolean deleteManyBooks(BookIdsDeleteCommand command){}
+    public boolean deleteManyBooks(BookDeleteManyCommand command){
+        if(command.getIds() == null)return false;
+        boolean result = this.bookRepository.deleteAllBooks(command.getIds());
+        this.deleteCache(command.getIds());
+        return result;
+    }
 
     public PageResult<BookSimpleResponse> getAllBooks(BookListCommand command){
         PageResult<Book> result = this.bookRepository.findAll(command.getPagination().getPage(),command.getPagination().getSize());
