@@ -1,5 +1,6 @@
 package it.unipi.booknetapi.model.user;
 
+import it.unipi.booknetapi.shared.model.ExternalId;
 import lombok.*;
 import org.bson.codecs.pojo.annotations.BsonId;
 import org.bson.types.ObjectId;
@@ -20,5 +21,7 @@ public class User {
     private String imageUrl;
 
     private Role role;
+
+    private ExternalId externalId;
 
 }

@@ -86,7 +86,7 @@ public class AuthorController {
                 .build();
         command.setUserToken(userToken);
 
-        boolean result = this.authorService.deleteAuthorById(command);
+        boolean result = this.authorService.deleteAuthor(command);
 
         return ResponseEntity.ok(result ? "Author deleted successfully" : "Error deleting author");
     }

@@ -1,10 +1,10 @@
 package it.unipi.booknetapi.model.review;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
-@Getter
-@Setter
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ReviewSummary {
     private float rating;
     private int count;

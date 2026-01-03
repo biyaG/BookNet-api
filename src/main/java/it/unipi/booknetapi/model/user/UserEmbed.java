@@ -15,4 +15,11 @@ public class UserEmbed {
 
     private String imageUrl;
 
+
+    public UserEmbed(User user) {
+        this.id = user.getId();
+        this.name = user.getName();
+        this.imageUrl = user.getImageUrl();
+    }
+
 }

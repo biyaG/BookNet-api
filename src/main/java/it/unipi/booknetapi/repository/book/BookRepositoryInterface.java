@@ -3,6 +3,7 @@ package it.unipi.booknetapi.repository.book;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
+import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.review.ReviewSummary;
 import it.unipi.booknetapi.shared.model.PageResult;
 
@@ -14,7 +15,7 @@ public interface BookRepositoryInterface {
     List<Book> saveAll(List<Book> books);
     boolean deleteBook(String idBook);
     boolean deleteAllBooks(List<String> idBooks);
-    boolean addReview(String idBook, String idUser, ReviewSummary reviewSummary);
+    boolean addReview(Review review);
     boolean removeReview(String idBook, String idUser, String idReview);
     boolean updateImage(String idBook, String newImageUrl);
     boolean updatePreview(String idBook, String newPreviewImageUrl);

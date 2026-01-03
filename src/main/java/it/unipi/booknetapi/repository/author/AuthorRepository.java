@@ -17,14 +17,12 @@ import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
-import java.util.stream.Collectors;
-
-import static org.neo4j.driver.Values.parameters;
 
 @Repository
 public class AuthorRepository implements AuthorRepositoryInterface {
@@ -91,7 +89,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         tx -> {
                             tx.run(
                                     cypher,
-                                    parameters(
+                                    Values.parameters(
                                             "id", author.getId(),
                                             "name", author.getName()
                                     )
@@ -149,7 +147,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                             tx -> {
                                 tx.run(
                                         "UNWIND $authors as author CREATE (a:Author {mid: author.id, name: author.name})",
-                                        parameters("authors", neo4jBatch)
+                                        Values.parameters("authors", neo4jBatch)
                                 );
                                 return null;
                             }
@@ -259,7 +257,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         try (Session session = this.neo4jManager.getDriver().session()) {
             session.executeWrite(tx -> {
-                tx.run(query, parameters("batch", authorsBatch));
+                tx.run(query, Values.parameters("batch", authorsBatch));
                 return null;
             });
         }
@@ -398,7 +396,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         tx -> {
                             tx.run(
                                     "OPTIONAL MATCH (a:Author {mid: $id}) DETACH DELETE a",
-                                    parameters("id", idAuthor)
+                                    Values.parameters("id", idAuthor)
                             );
                             return null;
                         }
@@ -462,7 +460,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         tx -> {
                             tx.run(
                                     "OPTIONAL MATCH (a:Author) WHERE a.mid IN $ids DETACH DELETE a",
-                                    parameters("ids", ids)
+                                    Values.parameters("ids", ids)
                             );
                             return null;
                         }

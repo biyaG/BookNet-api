@@ -5,14 +5,20 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import it.unipi.booknetapi.command.book.*;
+import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
+import it.unipi.booknetapi.command.review.ReviewByReaderListCommand;
+import it.unipi.booknetapi.command.review.ReviewCreateCommand;
 import it.unipi.booknetapi.dto.book.BookCreateRequest;
 import it.unipi.booknetapi.dto.book.BookResponse;
 import it.unipi.booknetapi.dto.book.BookSimpleResponse;
+import it.unipi.booknetapi.dto.review.ReviewCreateRequest;
+import it.unipi.booknetapi.dto.review.ReviewResponse;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.book.BookService;
 import it.unipi.booknetapi.service.fetch.ImportEntityType;
 import it.unipi.booknetapi.service.fetch.ImportService;
+import it.unipi.booknetapi.service.review.ReviewService;
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
@@ -29,14 +35,22 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/book")
 public class BookController {
 
+    private final AuthService authService;
     private final BookService bookService;
     private final ImportService importService;
-    private final AuthService authService;
+    private final ReviewService reviewService;
 
-    public BookController(BookService bookService, ImportService importService, AuthService authService) {
+
+    public BookController(
+            AuthService authService,
+            BookService bookService,
+            ImportService importService,
+            ReviewService reviewService
+    ) {
         this.bookService = bookService;
         this.importService = importService;
         this.authService = authService;
+        this.reviewService = reviewService;
     }
 
     @PostMapping(value = "upload/goodreads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -62,6 +76,51 @@ public class BookController {
                 .build();
 
         return ResponseEntity.ok(this.bookService.getBookById(command));
+    }
+
+    @GetMapping("/{idBook}/reviews")
+    @Operation(summary = "Get book reviews")
+    public ResponseEntity<PageResult<ReviewResponse>> getBookReviews(
+            @PathVariable String idBook,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ){
+        PaginationRequest paginationRequest = PaginationRequest.builder()
+                .page(page != null ? page : 0)
+                .size(size != null ? size : 10)
+                .build();
+
+        ReviewByBookListCommand command = ReviewByBookListCommand.builder()
+                .bookId(idBook)
+                .pagination(paginationRequest)
+                .build();
+
+        return ResponseEntity.ok(this.reviewService.getReviews(command));
+    }
+
+    @PostMapping("/{idBook}/reviews")
+    @Operation(summary = "add book reviews")
+    public ResponseEntity<ReviewResponse> addBookReview(
+            @PathVariable String idBook,
+            @RequestBody ReviewCreateRequest request,
+            @RequestHeader("Authorization") String token
+    ){
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        ReviewCreateCommand command = ReviewCreateCommand.builder()
+                .bookId(idBook)
+                .rating(request.getRating())
+                .comment(request.getComment())
+                .build();
+        command.setUserToken(userToken);
+
+        ReviewResponse result = this.reviewService.saveReview(command);
+
+        return ResponseEntity.ok(result);
     }
 
     @DeleteMapping("/{idBook}")

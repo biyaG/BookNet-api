@@ -415,7 +415,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
      * @return true if all reviews were deleted successfully, false otherwise
      */
     @Override
-    public boolean deleteAll(List<String> idReviews) {
+    public boolean delete(List<String> idReviews) {
         Objects.requireNonNull(idReviews);
 
         List<Review> reviews = this.findAll(idReviews);

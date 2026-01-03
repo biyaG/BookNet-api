@@ -11,18 +11,18 @@ import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.model.book.BookEmbed;
+import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.shared.lib.database.*;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
-
-import static org.neo4j.driver.Values.parameters;
 
 @Repository
 public class UserRepository implements UserRepositoryInterface {
@@ -127,7 +127,7 @@ public class UserRepository implements UserRepositoryInterface {
                         tx -> {
                             tx.run(
                                     cypher,
-                                    parameters(
+                                    Values.parameters(
                                             "userId", reader.getId().toHexString(),
                                             "userName", reader.getName()
                                     )
@@ -188,7 +188,7 @@ public class UserRepository implements UserRepositoryInterface {
                             tx -> {
                                 tx.run(
                                         "UNWIND $users as user CREATE (r:Reader {mid: user.userId, name: user.userName})",
-                                        parameters("users", noe4jBatch)
+                                        Values.parameters("users", noe4jBatch)
                                 );
                                 return null;
                             }
@@ -243,7 +243,7 @@ public class UserRepository implements UserRepositoryInterface {
                         tx -> {
                             tx.run(
                                     "MATCH (r:Reader {mid: $userId}) SET r.name = $userName",
-                                    parameters("userId", idUser, "userName", newName)
+                                    Values.parameters("userId", idUser, "userName", newName)
                             );
                             return null;
                         }
@@ -311,9 +311,9 @@ public class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * @param idUser
-     * @param preference
-     * @return
+     * @param idUser user's id
+     * @param preference new preference
+     * @return true if the preference was updated successfully, false otherwise
      */
     @Override
     public boolean updatePreference(String idUser, UserPreference preference) {
@@ -387,7 +387,7 @@ public class UserRepository implements UserRepositoryInterface {
 
                     tx.run(
                             cypher,
-                            parameters(
+                            Values.parameters(
                                 "userId", idUser,
                                 "genres", genreList,
                                 "authors", authorList
@@ -443,7 +443,49 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(shelf);
 
-        // TODO: to complete
+        List<Map<String, Object>> batch = shelf.stream()
+                .map(item -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("bookId", item.getBook().getId().toHexString());
+                    map.put("status", item.getStatus());
+                    // No need for 'bookTitle' or other fields
+                    return map;
+                })
+                .toList();
+
+        this.registry.timer("neo4j.ops", "query", "update_shelf").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    String cypher = """
+                        // 1. Find the User
+                        MATCH (r:Reader {mid: $userId})
+                    
+                        // 2. Iterate through the list of books
+                        UNWIND $batch AS row
+                    
+                        // 3. STRICT MATCH: Find the book by its Mongo ID
+                        // If the book does not exist in Neo4j, this line fails for that row,
+                        // and the rest of the operations (MERGE relationship) are SKIPPED for that specific book.
+                        MATCH (b:Book {mid: row.bookId})
+                    
+                        // 4. If we survived the MATCH above, create/update the relationship
+                        MERGE (r)-[rel:ADDED_TO_SHELF]->(b)
+                    
+                        // 5. Update Relationship Properties
+                        SET rel.ts = datetime(),
+                            rel.status = row.status
+                    """;
+                    tx.run(
+                            cypher,
+                            Values.parameters(
+                                "userId", idUser,
+                                    "batch", batch
+                            )
+                    );
+                    return null;
+                });
+            }
+        });
     }
 
     /**
@@ -520,7 +562,7 @@ public class UserRepository implements UserRepositoryInterface {
 
                     tx.run(
                             cypher,
-                            parameters(
+                            Values.parameters(
                                 "userId", idUser,
                                 "bookId", book.getId().toHexString(),
                                 "bookTitle", book.getTitle()
@@ -533,33 +575,95 @@ public class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * @param idUser
-     * @param idBook
-     * @return
+     * @param idUser user's id
+     * @param idBook book's id
+     * @return true if the book was removed successfully, false otherwise
      */
     @Override
     public boolean removeBookFromShelf(String idUser, String idBook) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(idBook);
+        if(!ObjectId.isValid(idUser) || !ObjectId.isValid(idBook)) return false;
+
+        UpdateResult updateResult = this.mongoCollection.updateOne(
+                Filters.eq("_id", new ObjectId(idUser)),
+                Updates.pull("shelf", Filters.eq("id", new ObjectId(idBook)))
+        );
+
+        if(updateResult.getModifiedCount() > 0) {
+            Runnable task = () -> this.removeBookFromShelfNeo4j(idUser, idBook);
+            Thread thread = new Thread(task);
+            thread.start();
+        }
+
         return false;
     }
 
-    /**
-     * @param idUser
-     * @param reviews
-     * @return
-     */
-    @Override
-    public boolean updateReviews(String idUser, List<String> reviews) {
-        return false;
+    private void removeBookFromShelfNeo4j(String idUser, String idBook) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(idBook);
+
+        this.registry.timer("neo4j.ops", "query", "remove_from_shelf").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(
+                            "MATCH (r:Reader {mid: $userId})-[rel:ADDED_TO_SHELF]->(b:Book {mid: $bookId}) DELETE rel",
+                            Values.parameters("userId", idUser, "bookId", idBook)
+                    );
+                    return null;
+                });
+            }
+        });
     }
 
+
     /**
-     * @param idUser user's id
-     * @param idReview review's id
+     * @param review review
      * @return true if the review was added successfully, false otherwise
      */
     @Override
-    public boolean addReview(String idUser, String idReview) {
-        return false;
+    public boolean addReview(Review review) {
+        Objects.requireNonNull(review);
+        Objects.requireNonNull(review.getBookId());
+        Objects.requireNonNull(review.getUser());
+        Objects.requireNonNull(review.getUser().getId());
+
+        UpdateResult updateResult = this.mongoCollection.updateOne(
+                Filters.eq("_id", review.getUser().getId()),
+                Updates.push("reviews", review.getId())
+        );
+
+        if(updateResult.getModifiedCount() > 0) {
+            Runnable task = () -> this.addReviewInNeo4j(
+                    review.getUser().getId().toHexString(),
+                    review.getBookId().toHexString(),
+                    review.getRating(),
+                    review.getDateAdded()
+            );
+            Thread thread = new Thread(task);
+            thread.start();
+        }
+
+        return updateResult.getModifiedCount() > 0;
+    }
+
+    private void addReviewInNeo4j(String idUser, String idBook, Float rating, Date date) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(rating);
+        Objects.requireNonNull(date);
+
+        this.registry.timer("neo4j.ops", "query", "add_review").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(
+                            "MATCH (r:Reader {mid: $userId})-[rel:RATER]->(b:Book {mid: $bookId}) SET rel.rating = $rating, rel.ts = $date",
+                            Values.parameters("userId", idUser, "bookId", idBook, "rating", rating, "date", date)
+                    );
+                    return null;
+                });
+            }
+        });
     }
 
     /**
@@ -568,8 +672,45 @@ public class UserRepository implements UserRepositoryInterface {
      * @return true if the review was deleted successfully, false otherwise
      */
     @Override
-    public boolean deleteReview(String idUser, String idReview) {
-        return false;
+    public boolean deleteReview(String idUser, String idBook, String idReview) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(idReview);
+
+        if(!ObjectId.isValid(idUser) || !ObjectId.isValid(idBook) || !ObjectId.isValid(idReview)) return false;
+
+        UpdateResult updateResult = this.mongoCollection.updateOne(
+                Filters.and(
+                    Filters.eq("_id", new ObjectId(idUser)),
+                    Filters.elemMatch("reviews", Filters.eq("$id", new ObjectId(idReview)))
+                ),
+                Updates.pull("reviews", Filters.eq("$id", new ObjectId(idReview)))
+        );
+
+        if(updateResult.getModifiedCount() > 0) {
+            Runnable task = () -> this.deleteReviewInNeo4j(idUser, idBook);
+            Thread thread = new Thread(task);
+            thread.start();
+        }
+
+        return updateResult.getModifiedCount() > 0;
+    }
+
+    private void deleteReviewInNeo4j(String idUser, String idBook) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(idUser);
+
+        this.registry.timer("neo4j.ops", "query", "delete_review").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(
+                            "MATCH (r:Reader {mid: $userId})-[rel:RATER]->(b:Book {mid: $bookId}) DELETE rel",
+                            Values.parameters("userId", idUser, "bookId", idBook)
+                    );
+                    return null;
+                });
+            }
+        });
     }
 
     /**
@@ -611,7 +752,7 @@ public class UserRepository implements UserRepositoryInterface {
                         tx -> {
                             tx.run(
                                     "OPTIONAL MATCH (r:Reader {mid: $userId}) DETACH DELETE r",
-                                    parameters("userId", idUser)
+                                    Values.parameters("userId", idUser)
                             );
                             return null;
                         }
@@ -673,7 +814,7 @@ public class UserRepository implements UserRepositoryInterface {
                         tx -> {
                             tx.run(
                                     "OPTIONAL MATCH (r:Reader) WHERE r.mid IN $userIds DETACH DELETE r",
-                                    parameters("userIds", ids)
+                                    Values.parameters("userIds", ids)
                             );
                             return null;
                         }

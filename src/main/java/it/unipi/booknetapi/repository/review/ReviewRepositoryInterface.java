@@ -14,7 +14,7 @@ public interface ReviewRepositoryInterface {
     boolean updateReview(String idReview, Float rating, String comment);
 
     boolean delete(String idReview);
-    boolean deleteAll(List<String> idReviews);
+    boolean delete(List<String> idReviews);
 
     Optional<Review> findById(String idReview);
 

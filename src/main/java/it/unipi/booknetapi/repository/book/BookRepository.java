@@ -12,6 +12,7 @@ import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
+import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
@@ -20,13 +21,12 @@ import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
-
-import static org.neo4j.driver.Values.parameters;
 
 @Repository
 public class BookRepository implements BookRepositoryInterface {
@@ -99,6 +99,8 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(book);
         logger.debug("Saving book: {}", book);
 
+        if(book.getRatingReview() == null) book.setRatingReview(new ReviewSummary(0, 0));
+
         try(com.mongodb.client.ClientSession session = this.mongoClient.startSession()){
             session.startTransaction();
 
@@ -153,7 +155,7 @@ public class BookRepository implements BookRepositoryInterface {
                 session.executeWrite(tx -> {
                     tx.run(
                             cypher,
-                            parameters(
+                            Values.parameters(
                                     "bookId", book.getId().toHexString(),
                                     "title", book.getTitle(),
                                     "ratingAvg", book.getRatingReview()//getRatingReview actually gives you the document so think about this latter
@@ -205,7 +207,7 @@ public class BookRepository implements BookRepositoryInterface {
                             tx -> {
                                 tx.run(
                                         "UNWIND $books as book CREATE (b:Book {mid:book.bookId, title: book.title, ratingAvg: book.ratingAvg})",
-                                        parameters("books", neo4jBatch)
+                                        Values.parameters("books", neo4jBatch)
                                 );
                                 return null;
                             }
@@ -256,7 +258,7 @@ public class BookRepository implements BookRepositoryInterface {
                         tx -> {
                             tx.run(
                                     "OPTIONAL MATCH(b:Book {mid: $bookId}) DETACH DELETE r", //CHANGE
-                                    parameters("bookId", idBook)
+                                    Values.parameters("bookId", idBook)
                             );
                             return null;
                         }
@@ -266,15 +268,29 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     @Override
-    public boolean addReview(String idBook, String idUser, ReviewSummary reviewSummary) {
-        Objects.requireNonNull(idBook);
-        Objects.requireNonNull(idUser);
-        Objects.requireNonNull(reviewSummary);
+    public boolean addReview(Review review) {
+        Objects.requireNonNull(review);
+        Objects.requireNonNull(review.getBookId());
+        Objects.requireNonNull(review.getUser());
+        Objects.requireNonNull(review.getUser().getId());
+
+        Book book = this.mongoCollection.find(Filters.eq("_id", review.getBookId())).first();
+        if(book == null) return false;
+        ReviewSummary oldSummary = book.getRatingReview();
+
+        int newCount = oldSummary.getCount() + 1;
+        float newAvg = ((oldSummary.getRating() * oldSummary.getCount()) + review.getRating()) / newCount;
+
+        ReviewSummary updatedSummary = new ReviewSummary(newAvg, newCount);
 
         UpdateResult updateResult = this.mongoCollection.updateOne(
-                Filters.eq("_id", new ObjectId(idBook)),
-                Updates.push("reviews", reviewSummary)
+                Filters.eq("_id", review.getBookId()),
+                Updates.combine(
+                        Updates.set("ratingReview", updatedSummary),
+                        Updates.push("reviews", review.getBookId())
+                )
         );
+
         return updateResult.getModifiedCount() > 0;
     }
 
@@ -285,13 +301,11 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(idReview);
 
        UpdateResult updateResult = this.mongoCollection.updateOne(
-                Filters.eq("_id", new ObjectId(idBook)),
-               Updates.pull("reviews",
-                       Filters.eq("_id", new ObjectId(idReview))
-               )
+               Filters.eq("_id", new ObjectId(idBook)),
+               Updates.pull("reviews", Filters.eq("_id", new ObjectId(idReview)))
         );
-        return updateResult.getModifiedCount() > 0;
 
+        return updateResult.getModifiedCount() > 0;
     }
 
     @Override
@@ -399,7 +413,7 @@ public class BookRepository implements BookRepositoryInterface {
                         tx -> {
                             tx.run(
                                     "OPTIONAL MATCH (b: Book) WHERE b.mid IN $bookIds DETACH DELETE b", /// why bookIds
-                                    parameters("bookIds",idBooks)
+                                    Values.parameters("bookIds",idBooks)
                             );
                             return null;
                         }

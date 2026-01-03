@@ -69,7 +69,7 @@ public class AuthorService {
         return authorResponse;
     }
 
-    public boolean deleteAuthorById(AuthorDeleteCommand command) {
+    public boolean deleteAuthor(AuthorDeleteCommand command) {
         if(command.getId() == null) return false;
 
         boolean result =  this.authorRepository.delete(command.getId());
