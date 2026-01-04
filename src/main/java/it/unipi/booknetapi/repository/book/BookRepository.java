@@ -90,7 +90,7 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     private void deleteCacheInThread(List<ObjectId> idBooks) {
-        Thread thread = new Thread(() -> deleteCache(idBooks.toString()));
+        Thread thread = new Thread(() -> idBooks.forEach(idBook -> deleteCache(idBook.toHexString())));
         thread.start();
     }
 
@@ -416,7 +416,7 @@ public class BookRepository implements BookRepositoryInterface {
                         tx -> {
                             tx.run(
                                     "OPTIONAL MATCH (b: Book) WHERE b.mid IN $bookIds DETACH DELETE b", /// why bookIds
-                                    Values.parameters("bookIds",idBooks)
+                                    Values.parameters("bookIds",idBooks.stream().map(ObjectId::toHexString).toList())
                             );
                             return null;
                         }

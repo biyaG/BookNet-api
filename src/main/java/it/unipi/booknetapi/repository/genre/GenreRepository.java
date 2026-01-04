@@ -130,7 +130,7 @@ public class GenreRepository implements GenreRepositoryInterface {
             }
         }
 
-        return List.of();
+        return genres;
     }
 
     private void saveGenresInNeo4j(List<Genre> genres) {

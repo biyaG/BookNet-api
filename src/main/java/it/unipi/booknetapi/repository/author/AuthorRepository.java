@@ -1,6 +1,8 @@
 package it.unipi.booknetapi.repository.author;
 
+import com.mongodb.bulk.BulkWriteInsert;
 import com.mongodb.bulk.BulkWriteResult;
+import com.mongodb.bulk.BulkWriteUpsert;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
@@ -164,20 +166,15 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public List<Author> importAuthors(List<AuthorGoodReads> importedAuthors) {
         logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] Importing {} authors from GoodReads", importedAuthors.size());
 
-        // 1. Perform the MongoDB Bulk Upsert (The code we wrote previously)
-        bulkUpset(importedAuthors);
+        List<ObjectId> ids = bulkUpset(importedAuthors);
 
-        // 2. Extract the list of External IDs to query MongoDB
         List<String> externalIds = importedAuthors.stream()
                 .map(AuthorGoodReads::getAuthorId)
                 .toList();
 
-        // 3. Fetch the ACTUAL documents from MongoDB to get the real _id
-        //    (Using the POJO collection 'mongoCollection')
         List<Map<String, Object>> neo4jBatch = new ArrayList<>();
 
-
-        List<Author> authors = this.mongoCollection.find(Filters.in("externalId.kaggle", externalIds))
+        List<Author> authors = this.mongoCollection.find(Filters.in("_id", ids))
                 .projection(Projections.include("_id", "name")) // Optimize: fetch only needed fields
                 .into(new ArrayList<>());
 
@@ -199,7 +196,9 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         return authors;
     }
 
-    public void bulkUpset(List<AuthorGoodReads> authorsGoodReads) {
+    private List<ObjectId> bulkUpset(List<AuthorGoodReads> authorsGoodReads) {
+        logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] [MONGODB] Importing {} authors from GoodReads", authorsGoodReads.size());
+
         List<WriteModel<Author>> writes = new ArrayList<>();
 
         for (AuthorGoodReads source : authorsGoodReads) {
@@ -240,11 +239,27 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         if (!writes.isEmpty()) {
             BulkWriteResult result = this.mongoCollection
                     .bulkWrite(writes, new BulkWriteOptions().ordered(false));
+
+            List<BulkWriteUpsert> inserts = result.getUpserts();
+
+            List<ObjectId> objectIds = new ArrayList<>();
+            for (BulkWriteUpsert insert : inserts) {
+                objectIds.add(insert.getId().asObjectId().getValue());
+            }
+            logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] [MONGODB] writes {} authors", objectIds.size());
+
+            return objectIds;
+        } else {
+            logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] [MONGODB] writes is empty");
         }
+
+        return List.of();
     }
 
     // In your Neo4j Service or Repository
     private void bulkUpdateAuthorsInNeo4j(List<Map<String, Object>> authorsBatch) {
+        logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] [NEO4J] Importing {} authors", authorsBatch.size());
+
         // Cypher:
         // 1. UNWIND expands the list into rows.
         // 2. MERGE finds the author by ID or creates them.
