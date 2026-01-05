@@ -38,6 +38,13 @@ public class AuthorService {
         this.cacheService.delete(generateCacheKey(idAuthor));
     }
 
+
+    public void migrate() {
+        Thread thread = new Thread(this.authorRepository::migrateAuthors);
+        thread.start();
+    }
+
+
     public AuthorResponse saveAuthor(AuthorCreateCommand command) {
         if(command.getName() == null) return null;
 

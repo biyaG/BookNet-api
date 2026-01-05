@@ -3,10 +3,7 @@ package it.unipi.booknetapi.repository.author;
 import com.mongodb.bulk.BulkWriteInsert;
 import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.bulk.BulkWriteUpsert;
-import com.mongodb.client.ClientSession;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.*;
 import com.mongodb.client.model.*;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
@@ -15,6 +12,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.book.BookEmbed;
+import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
@@ -31,17 +29,21 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
     Logger logger = LoggerFactory.getLogger(AuthorRepository.class);
 
+    private final Integer batchSize;
+
     private final MongoClient mongoClient;
     private final MongoCollection<Author> mongoCollection;
     private final Neo4jManager neo4jManager;
     private final MeterRegistry registry;
 
     public AuthorRepository(
+            AppConfig appConfig,
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
             MeterRegistry registry
     ) {
+        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 100;
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("authors", Author.class);
         this.neo4jManager = neo4jManager;
@@ -166,34 +168,44 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public List<Author> importAuthors(List<AuthorGoodReads> importedAuthors) {
         logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] Importing {} authors from GoodReads", importedAuthors.size());
 
-        List<ObjectId> ids = bulkUpset(importedAuthors);
+        List<Author> result = new ArrayList<>(importedAuthors.size());
 
-        List<String> externalIds = importedAuthors.stream()
-                .map(AuthorGoodReads::getAuthorId)
-                .toList();
+        for(int i=0; i < importedAuthors.size(); i++) {
+            int endIndex = Math.min(i + batchSize, importedAuthors.size());
 
-        List<Map<String, Object>> neo4jBatch = new ArrayList<>();
+            List<AuthorGoodReads> importedAuthorsBatch =  importedAuthors.subList(i, endIndex);
 
-        List<Author> authors = this.mongoCollection.find(Filters.in("_id", ids))
-                .projection(Projections.include("_id", "name")) // Optimize: fetch only needed fields
-                .into(new ArrayList<>());
+            List<ObjectId> ids = bulkUpset(importedAuthorsBatch);
 
-        authors.forEach(
-                author -> {
-                    // Map MongoDB Author POJO to Neo4j Map
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("id", author.getId().toHexString()); // The crucial MongoDB ID
-                    map.put("name", author.getName());
-                    neo4jBatch.add(map);
-                }
-        );
+            /*List<String> externalIds = importedAuthorsBatch.stream()
+                    .map(AuthorGoodReads::getAuthorId)
+                    .toList();*/
 
-        // 4. Send to Neo4j
-        if (!neo4jBatch.isEmpty()) {
-            bulkUpdateAuthorsInNeo4j(neo4jBatch);
+            List<Map<String, Object>> neo4jBatch = new ArrayList<>();
+
+            List<Author> authors = this.mongoCollection.find(Filters.in("_id", ids))
+                    .projection(Projections.include("_id", "name")) // Optimize: fetch only needed fields
+                    .into(new ArrayList<>());
+
+            authors.forEach(
+                    author -> {
+                        // Map MongoDB Author POJO to Neo4j Map
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("id", author.getId().toHexString()); // The crucial MongoDB ID
+                        map.put("name", author.getName());
+                        neo4jBatch.add(map);
+                    }
+            );
+
+            // 4. Send to Neo4j
+            if (!neo4jBatch.isEmpty()) {
+                bulkUpdateAuthorsInNeo4j(neo4jBatch);
+            }
+
+            result.addAll(authors);
         }
 
-        return authors;
+        return result;
     }
 
     private List<ObjectId> bulkUpset(List<AuthorGoodReads> authorsGoodReads) {
@@ -207,7 +219,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
             String goodReadsId = source.getAuthorId();
 
             // 3. Create the Update Model
-            // Even though we use POJOs, we use 'Updates.set' to avoid overwriting the 'books' list
+            // Even though we use POJOs, we use 'Updates.set' to avoid overwriting the 'authors' list
             writes.add(new UpdateOneModel<>(
                     // Filter: Find author by external Kaggle ID
                     Filters.eq("externalId.goodReads", goodReadsId),
@@ -561,5 +573,63 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         return this.mongoCollection
                 .find(Filters.in("_id", idAuthors))
                 .into(new ArrayList<>());
+    }
+
+    /**
+     * Migrate authors from mongodb to neo4j
+     */
+    @Override
+    public void migrateAuthors() {
+        logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] Migrate authors from mongodb to neo4j");
+
+        // int batchSize = 100;
+        int offset = 0;
+
+        long totalDocuments = this.mongoCollection.countDocuments();
+
+        logger.debug("Starting migration of {} authors...", totalDocuments);
+
+        while (offset < totalDocuments) {
+            List<Author> authors = new ArrayList<>();
+            try (MongoCursor<Author> cursor = this.mongoCollection.find()
+                    .skip(offset)
+                    .limit(this.batchSize)
+                    .iterator()
+            ) {
+                while (cursor.hasNext()) {
+                    authors.add(cursor.next());
+                }
+            }
+
+            if(authors.isEmpty()) break;
+
+            List<Map<String, Object>> neo4jBatch = new ArrayList<>();
+            for(Author author : authors) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", author.getId().toHexString());
+                map.put("name", author.getName());
+                neo4jBatch.add(map);
+            }
+
+            String query = """
+            UNWIND $batch AS row
+            MERGE (a:Author {mid: row.id})
+            ON CREATE SET
+                a.name = row.name
+            """;
+
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(query, Values.parameters("batch", neo4jBatch));
+                    return null;
+                });
+            }
+
+            logger.debug("Migrated batch: {} to {}", offset, offset + batchSize);
+
+            offset += this.batchSize;
+        }
+
+        logger.debug("Migration complete.");
     }
 }

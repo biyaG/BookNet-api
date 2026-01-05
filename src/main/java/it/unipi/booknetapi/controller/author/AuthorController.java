@@ -62,7 +62,16 @@ public class AuthorController {
     }
 
 
-    @GetMapping("/{idAuthor}")
+    @GetMapping("/migration")
+    @Operation(summary = "Migrate author from mongodb to neo4j")
+    public ResponseEntity<String> migrateAuthor() {
+        // TODO: add authentication and admin check
+        this.authorService.migrate();
+
+        return ResponseEntity.ok("Starting migration");
+    }
+
+   @GetMapping("/{idAuthor}")
     @Operation(summary = "Get author information")
     public ResponseEntity<AuthorResponse> getAuthorById(@PathVariable String idAuthor) {
         AuthorGetCommand command = AuthorGetCommand.builder()

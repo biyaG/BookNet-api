@@ -32,4 +32,5 @@ public interface AuthorRepositoryInterface {
     List<Author> findAll(List<String> idAuthors);
     List<Author> find(List<ObjectId> idAuthors);
 
+    void migrateAuthors();
 }

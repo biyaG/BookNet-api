@@ -37,4 +37,6 @@ public class AppConfig {
     private Long redisDefaultExpiration = 3600L;
     private String redisAppSpaceName = "booknet";
 
+    private Integer batchSize = 100;
+
 }
