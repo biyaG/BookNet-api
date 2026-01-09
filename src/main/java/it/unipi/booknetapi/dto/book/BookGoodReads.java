@@ -21,24 +21,34 @@ public class BookGoodReads {
     @JsonProperty("country_code")
     private String countryCode;
     @JsonProperty("language_code")
-    private String language_code;
+    private String languageCode;
     @JsonProperty("popular_shelves")
     private List<BookShelfGoodReads> popularShelves;
     @JsonProperty("similar_books")
     private List<String> similarBooks;
     private List<BookAuthorGoodReads> authors;
     private String title;
+    @JsonProperty("title_without_series")
+    private String titleWithoutSeries;
     private String description;
+    private String publisher;
     @JsonProperty("average_rating")
     private String averageRating;
     @JsonProperty("rating_count")
-    private String rating_count;
+    private String ratingCount;
     @JsonProperty("image_url")
     private String imageUrl;
     @JsonProperty("book_id")
-    private String externalId;
+    private String bookId;
     //Preview
     @JsonProperty("url")
-    private List<String> url;
+    private String url;
+
+    @JsonProperty("publication_year")
+    private String publicationYear;
+    @JsonProperty("publication_month")
+    private String publicationMonth;
+    @JsonProperty("publication_day")
+    private String publicationDay;
 
 }

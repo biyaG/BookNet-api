@@ -32,15 +32,15 @@ public class BookCreateCommand extends BaseCommand {
 
     private List<AuthorEmbed> authors;
     private List<GenreEmbed> genres;
-    private List<BookEmbed> similar_books;
+    private List<BookEmbed> similarBooks;
 
     private ReviewSummary ratingReview;
 
     private String isbn;
     private String isbn13;
     private String subtitle;
-    private Integer num_pages;
-    private Date publication_date;
+    private Integer numPages;
+    private Date publicationDate;
     private FormatTypeEnum formats;
     private SourceFromEnum source;
     private ExternalId externalId;
@@ -58,8 +58,8 @@ public class BookCreateCommand extends BaseCommand {
         this.isbn = request.getIsbn();
         this.isbn13 = request.getIsbn13();
         this.subtitle = request.getSubtitle();
-        this.num_pages = request.getNum_pages();
-        this.publication_date = request.getPublication_date();
+        this.numPages = request.getNum_pages();
+        this.publicationDate = request.getPublication_date();
         this.source = request.getSource();
         this.externalId = request.getExternalId();
 
@@ -67,7 +67,7 @@ public class BookCreateCommand extends BaseCommand {
         this.authors = request.getAuthors();
         this.ratingReview = request.getRatingReview();
         this.format = request.getFormat();
-        this.similar_books = request.getSimilar_books();
+        this.similarBooks = request.getSimilar_books();
     }
 
 }

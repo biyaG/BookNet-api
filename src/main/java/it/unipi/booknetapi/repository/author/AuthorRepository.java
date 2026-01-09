@@ -1,6 +1,5 @@
 package it.unipi.booknetapi.repository.author;
 
-import com.mongodb.bulk.BulkWriteInsert;
 import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.bulk.BulkWriteUpsert;
 import com.mongodb.client.*;
@@ -12,9 +11,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.book.BookEmbed;
+import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
+import it.unipi.booknetapi.shared.model.ExternalId;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.Document;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Values;
@@ -35,21 +37,48 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     private final MongoCollection<Author> mongoCollection;
     private final Neo4jManager neo4jManager;
     private final MeterRegistry registry;
+    private final CacheService cacheService;
+
+    private static final String CACHE_PREFIX = "author:";
+    private static final int CACHE_TTL = 3600; // 1 hour
 
     public AuthorRepository(
             AppConfig appConfig,
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
-            MeterRegistry registry
+            MeterRegistry registry,
+            CacheService cacheService
     ) {
         this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 100;
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("authors", Author.class);
         this.neo4jManager = neo4jManager;
         this.registry = registry;
+        this.cacheService = cacheService;
     }
 
+
+    private static String generateCacheKey(String idAuthor) {
+        return CACHE_PREFIX + idAuthor;
+    }
+
+    private void cacheAuthor(Author author) {
+        this.cacheService.save(generateCacheKey(author.getId().toHexString()), author, CACHE_TTL);
+    }
+
+    private void deleteCache(String idAuthor) {
+        this.cacheService.delete(generateCacheKey(idAuthor));
+    }
+
+    private void deleteCache(List<String> idAuthors) {
+        idAuthors.forEach(this::deleteCache);
+    }
+
+    private void deleteCacheInThread(List<String> idAuthors) {
+        Thread thread = new Thread(() -> deleteCache(idAuthors));
+        thread.start();
+    }
 
     /**
      * @param author the author to insert
@@ -70,6 +99,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 if(insertOneResult.getInsertedId() != null) {
                     mongoSession.commitTransaction();
                     saveAuthorToNeo4j(author);
+                    cacheAuthor(author);
                     return author;
                 } else {
                     mongoSession.abortTransaction();
@@ -170,16 +200,12 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         List<Author> result = new ArrayList<>(importedAuthors.size());
 
-        for(int i=0; i < importedAuthors.size(); i++) {
+        for(int i=0; i < importedAuthors.size(); i += batchSize) {
             int endIndex = Math.min(i + batchSize, importedAuthors.size());
 
             List<AuthorGoodReads> importedAuthorsBatch =  importedAuthors.subList(i, endIndex);
 
             List<ObjectId> ids = bulkUpset(importedAuthorsBatch);
-
-            /*List<String> externalIds = importedAuthorsBatch.stream()
-                    .map(AuthorGoodReads::getAuthorId)
-                    .toList();*/
 
             List<Map<String, Object>> neo4jBatch = new ArrayList<>();
 
@@ -197,7 +223,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                     }
             );
 
-            // 4. Send to Neo4j
             if (!neo4jBatch.isEmpty()) {
                 bulkUpdateAuthorsInNeo4j(neo4jBatch);
             }
@@ -215,10 +240,9 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         for (AuthorGoodReads source : authorsGoodReads) {
 
-            // 2. Map the ID from JSON (String) to your Nested Object structure
             String goodReadsId = source.getAuthorId();
+            ExternalId externalId = ExternalId.builder().goodReads(goodReadsId).build();
 
-            // 3. Create the Update Model
             // Even though we use POJOs, we use 'Updates.set' to avoid overwriting the 'authors' list
             writes.add(new UpdateOneModel<>(
                     // Filter: Find author by external Kaggle ID
@@ -229,25 +253,18 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                             // ALWAYS update these fields (e.g. fix name typos)
                             Updates.set("name", source.getName()),
 
-                            // ON INSERT only: Generate ID and set the external key
-                            // Updates.setOnInsert("_id", new ObjectId()),
-                            Updates.setOnInsert("externalId.goodReads", goodReadsId),
-                            Updates.setOnInsert("externalId.amazon", null),
-                            Updates.setOnInsert("externalId.googleBooks", null),
-                            Updates.setOnInsert("externalId.kaggle", null),
-
-                            // ON INSERT only: Initialize empty books list so it's not null
+                            // ON INSERT only:
+                            Updates.setOnInsert("externalId", externalId),
                             Updates.setOnInsert("description", null),
                             Updates.setOnInsert("imageUrl", null),
                             Updates.setOnInsert("books", List.of())
                     ),
 
-                    // Options: Create if it doesn't exist
+                    // Create if it doesn't exist
                     new UpdateOptions().upsert(true)
             ));
         }
 
-        // 4. Execute on the typed collection
         if (!writes.isEmpty()) {
             BulkWriteResult result = this.mongoCollection
                     .bulkWrite(writes, new BulkWriteOptions().ordered(false));
@@ -305,6 +322,8 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         Updates.set("description", newDescription)
                 );
 
+        deleteCache(idAuthor);
+
         return updateResult.getModifiedCount() > 0;
     }
 
@@ -323,6 +342,8 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         Updates.set("imageUrl", newImageUrl)
                 );
 
+        deleteCache(idAuthor);
+
         return updateResult.getModifiedCount() > 0;
     }
 
@@ -336,16 +357,19 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         Objects.requireNonNull(idAuthor);
         Objects.requireNonNull(books);
 
-        // TODO: to complete (put in transactional and call neo4j)
+        if(!ObjectId.isValid(idAuthor)) return false;
 
-        return false;
-    }
+        logger.debug("[REPOSITORY] [AUTHOR] [SET BOOKS] author: {}, book size: {}", idAuthor, books.size());
 
-    private void updateBooksInNeo4j(String idAuthor, List<BookEmbed> books) {
-        Objects.requireNonNull(idAuthor);
-        Objects.requireNonNull(books);
+        UpdateResult result = this.mongoCollection
+                .updateOne(
+                        Filters.eq("_id", new ObjectId(idAuthor)),
+                        Updates.set("books", books)
+                );
 
-        // TODO: to complete
+        deleteCache(idAuthor);
+
+        return result.getModifiedCount() > 0;
     }
 
     /**
@@ -358,11 +382,19 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         Objects.requireNonNull(idAuthor);
         Objects.requireNonNull(book);
 
-        logger.debug("[REPOSITORY] [AUTHOR] [ADD BOOK] Adding book {} to author {}", book.getId(), idAuthor);
+        if(!ObjectId.isValid(idAuthor)) return false;
 
-        // TODO: to complete
+        logger.debug("[REPOSITORY] [AUTHOR] [ADD BOOK] author: {}, book: {}", idAuthor, book.getId());
 
-        return false;
+        UpdateResult result = this.mongoCollection
+                .updateOne(
+                        Filters.eq("_id", new ObjectId(idAuthor)),
+                        Updates.push("books", book)
+                );
+
+        deleteCache(idAuthor);
+
+        return result.getModifiedCount() > 0;
     }
 
     /**
@@ -375,11 +407,19 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         Objects.requireNonNull(idAuthor);
         Objects.requireNonNull(idBook);
 
-        logger.debug("[REPOSITORY] [AUTHOR] [REMOVE BOOK] Removing book {} from author {}", idBook, idAuthor);
+        if(!ObjectId.isValid(idAuthor)) return false;
+        if(!ObjectId.isValid(idBook)) return false;
 
-        // TODO: to complete
+        logger.debug("[REPOSITORY] [AUTHOR] [REMOVE BOOK] author: {}, book: {}", idAuthor, idBook);
 
-        return false;
+        UpdateResult result = mongoCollection.updateOne(
+                Filters.eq("_id", new ObjectId(idAuthor)),
+                Updates.pull("books", new Document("id", new ObjectId(idBook)))
+        );
+
+        deleteCache(idAuthor);
+
+        return result.getModifiedCount() > 0;
     }
 
     /**
@@ -390,7 +430,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public boolean delete(String idAuthor) {
         Objects.requireNonNull(idAuthor);
 
-        logger.debug("[REPOSITORY] [AUTHOR] [DELETE] Deleting author: {}", idAuthor);
+        logger.debug("[REPOSITORY] [AUTHOR] [DELETE] [BY ID] id: {}", idAuthor);
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -399,15 +439,16 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 DeleteResult deleteResult = this.mongoCollection.deleteOne(mongoSession, Filters.eq("_id", new ObjectId(idAuthor)));
 
                 if(deleteResult.getDeletedCount() > 0) {
-                    mongoSession.commitTransaction();
                     deleteAuthorFromNeo4j(idAuthor);
+                    mongoSession.commitTransaction();
+                    deleteCache(idAuthor);
                     return true;
                 } else {
                     mongoSession.abortTransaction();
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("[REPOSITORY] [AUTHOR] [DELETE] Error during transaction: {}", e.getMessage());
+                logger.error("[REPOSITORY] [AUTHOR] [DELETE] [BY ID] Error during transaction: {}", e.getMessage());
             }
         }
 
@@ -440,7 +481,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public boolean delete(List<String> idAuthors) {
         Objects.requireNonNull(idAuthors);
 
-        logger.debug("[REPOSITORY] [AUTHOR] [DELETE MANY] Deleting {} authors", idAuthors.size());
+        logger.debug("[REPOSITORY] [AUTHOR] [DELETE] [BY IDS] authors ids: {}", idAuthors);
 
         List<String> ids = idAuthors.stream()
                 .distinct()
@@ -459,13 +500,14 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 if(deleteResult.getDeletedCount() > 0) {
                     deleteAuthorsFromNeo4j(ids);
                     mongoSession.commitTransaction();
+                    deleteCacheInThread(idAuthors);
                     return true;
                 } else {
                     mongoSession.abortTransaction();
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("[REPOSITORY] [AUTHOR] [DELETE MANY] Error during transaction: {}", e.getMessage());
+                logger.error("[REPOSITORY] [AUTHOR] [DELETE] [BY IDS] Error during transaction: {}", e.getMessage());
             }
         }
 
@@ -504,17 +546,16 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public Optional<Author> findById(String idAuthor) {
         Objects.requireNonNull(idAuthor);
 
-        logger.debug("[REPOSITORY] [AUTHOR] [GET] Retrieving author: {}", idAuthor);
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [BY ID] id: {}", idAuthor);
+
+        try {
+            Author author = this.cacheService.get(generateCacheKey(idAuthor), Author.class);
+            if(author != null) return Optional.of(author);
+        } catch (Exception ignored) {}
 
         Author author = this.mongoCollection
                 .find(Filters.eq("_id", new ObjectId(idAuthor)))
                 .first();
-
-        if (author != null) {
-            logger.debug("[REPOSITORY] [AUTHOR] [GET] Author successfuly retrieving");
-        } else {
-            logger.debug("[REPOSITORY] [AUTHOR] [GET] Author not found");
-        }
 
         return author != null ? Optional.of(author) : Optional.empty();
     }
@@ -524,7 +565,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
      */
     @Override
     public PageResult<Author> findAll(int page, int size) {
-        logger.debug("[REPOSITORY] [AUTHOR] [GET ALL] Retrieving all authors with pagination: page {} size {}", page, size);
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [ALL] page: {}, size: {}", page, size);
 
         int skip = page * size;
 
@@ -547,7 +588,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public List<Author> findAll(List<String> idAuthors) {
         Objects.requireNonNull(idAuthors);
 
-        logger.debug("[REPOSITORY] [AUTHOR] [GET MANY] Retrieving {} authors", idAuthors.size());
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [MANY] authors: {}", idAuthors);
 
         List<ObjectId> ids = idAuthors.stream()
                 .filter(Objects::nonNull)
@@ -566,7 +607,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public List<Author> find(List<ObjectId> idAuthors) {
         Objects.requireNonNull(idAuthors);
 
-        logger.debug("[REPOSITORY] [AUTHOR] [GET MANY] Retrieving {} authors", idAuthors.size());
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [MANY] authors ids size: {}", idAuthors.size());
 
         if(idAuthors.isEmpty()) return List.of();
 
@@ -576,18 +617,35 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     }
 
     /**
+     * @param idAuthors extern goodreads author's ids
+     * @return list of authors with the given ids, or empty if not found
+     */
+    @Override
+    public List<Author> findByExternGoodReadIds(List<String> idAuthors) {
+        Objects.requireNonNull(idAuthors);
+
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [MANY] [BY EXTERN GOOD READ IDS] authors ids size: {}", idAuthors.size());
+
+        if(idAuthors.isEmpty()) return List.of();
+
+        return this.mongoCollection
+                .find(Filters.in("externalId.goodReads", idAuthors))
+                .into(new ArrayList<>());
+    }
+
+    /**
      * Migrate authors from mongodb to neo4j
      */
     @Override
     public void migrateAuthors() {
-        logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] Migrate authors from mongodb to neo4j");
+        logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J]");
 
         // int batchSize = 100;
         int offset = 0;
 
         long totalDocuments = this.mongoCollection.countDocuments();
 
-        logger.debug("Starting migration of {} authors...", totalDocuments);
+        logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J] Starting migration of {} authors...", totalDocuments);
 
         while (offset < totalDocuments) {
             List<Author> authors = new ArrayList<>();
@@ -625,11 +683,11 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 });
             }
 
-            logger.debug("Migrated batch: {} to {}", offset, offset + batchSize);
+            logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
 
             offset += this.batchSize;
         }
 
-        logger.debug("Migration complete.");
+        logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J] Migration complete.");
     }
 }

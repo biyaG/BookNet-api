@@ -9,6 +9,7 @@ import org.bson.codecs.pojo.annotations.BsonId;
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -24,7 +25,7 @@ public class Author {
     private String description;
     private String imageUrl;
 
-    private List<BookEmbed> books = List.of();
+    private List<BookEmbed> books =  new ArrayList<>();
 
     private ExternalId externalId = new ExternalId();
 

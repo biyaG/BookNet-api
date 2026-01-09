@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.bson.types.ObjectId;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -15,7 +16,7 @@ public class BookEmbed {
     private ObjectId id;
     private String title;
     private String description;
-    private List<String> images;
+    private List<String> images = new ArrayList<>();;
 //    private String externalBookId; //We should have this because that is how we can link the similarbooks
 
     public BookEmbed(Book book) {

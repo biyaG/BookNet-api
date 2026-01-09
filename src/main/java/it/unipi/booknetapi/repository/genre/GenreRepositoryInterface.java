@@ -19,6 +19,8 @@ public interface GenreRepositoryInterface {
     List<Genre> find(List<String> idGenres);
     PageResult<Genre> findAll(int page, int size);
 
+    List<Genre> findByName(List<String> GenreNames);
+
     PageResult<Genre> search(String name, int page, int size);
 
 }

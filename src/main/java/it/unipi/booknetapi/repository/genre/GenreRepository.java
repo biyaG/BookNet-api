@@ -14,13 +14,14 @@ import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
-
-import static org.neo4j.driver.Values.parameters;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Repository
 public class GenreRepository implements GenreRepositoryInterface {
@@ -53,7 +54,7 @@ public class GenreRepository implements GenreRepositoryInterface {
     public Genre insert(Genre genre) {
         Objects.requireNonNull(genre);
 
-        logger.debug("Inserting genre: {}", genre);
+        logger.debug("[REPOSITORY] [GENRE] [INSERT] [ONE] genre: {}", genre);
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -87,7 +88,7 @@ public class GenreRepository implements GenreRepositoryInterface {
                         tx -> {
                             tx.run(
                                     cypher,
-                                    parameters(
+                                    Values.parameters(
                                             "id", genre.getId().toHexString(),
                                             "name", genre.getName()
                                     )
@@ -109,18 +110,41 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         if(genres.isEmpty()) return List.of();
 
-        logger.debug("Inserting many genre: {}", genres.size());
+        List<Genre> distinctInput = genres.stream()
+                .filter(g -> g.getName() != null)
+                .collect(Collectors.toMap(Genre::getName, g -> g, (existing, replacement) -> existing))
+                .values()
+                .stream()
+                .toList();
+
+        List<String> names = distinctInput.stream().map(Genre::getName).toList();
+
+        logger.debug("[REPOSITORY] [GENRE] [INSERT] [MANY] genres size: {}", genres.size());
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
-                InsertManyResult insertManyResult = this.mongoCollection.insertMany(mongoSession, genres);
+                List<Genre> existingGenres = this.mongoCollection
+                        .find(mongoSession, Filters.in("name", names))
+                        .into(new ArrayList<>());
+
+                Set<String> existingNames = existingGenres.stream()
+                        .map(Genre::getName)
+                        .collect(Collectors.toSet());
+
+                List<Genre> newGenres = distinctInput.stream()
+                        .filter(g -> !existingNames.contains(g.getName()))
+                        .toList();
+
+                InsertManyResult insertManyResult = this.mongoCollection.insertMany(mongoSession, newGenres);
 
                 if(!insertManyResult.getInsertedIds().isEmpty()) {
-                    saveGenresInNeo4j(genres);
+                    saveGenresInNeo4j(newGenres);
                     mongoSession.commitTransaction();
-                    return genres;
+
+                    return Stream.concat(existingGenres.stream(), newGenres.stream())
+                            .collect(Collectors.toList());
                 } else {
                     mongoSession.abortTransaction();
                 }
@@ -130,7 +154,7 @@ public class GenreRepository implements GenreRepositoryInterface {
             }
         }
 
-        return genres;
+        return new ArrayList<>();
     }
 
     private void saveGenresInNeo4j(List<Genre> genres) {
@@ -143,9 +167,15 @@ public class GenreRepository implements GenreRepositoryInterface {
             try (Session session = this.neo4jManager.getDriver().session()) {
                 session.executeWrite(
                         tx -> {
+                            String query = """
+                                    UNWIND $genres as genre
+                                    MERGE (g:Genre {name: genre.name})
+                                    ON CREATE SET g.mid = genre.id
+                                    ON MATCH SET g.mid = genre.id
+                                    """;
                             tx.run(
-                                    "UNWIND $genres as genre CREATE (g:Genre {mid: genre.id, name: genre.name})",
-                                    parameters("genres", neo4jBatch)
+                                    query,
+                                    Values.parameters("genres", neo4jBatch)
                             );
                             return null;
                         }
@@ -164,7 +194,7 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         if(!ObjectId.isValid(idGenre)) return false;
 
-        logger.debug("Deleting genre: {}", idGenre);
+        logger.debug("[REPOSITORY] [GENRE] [DELETE] [BY ID] id: {}", idGenre);
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -193,7 +223,16 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         this.registry.timer("neo4j.ops", "query", "delete_genre").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
-                session.run("MATCH (g:Genre {mid: $id}) DETACH DELETE g", parameters("id", idGenre));
+                session.executeWrite(
+                        tx -> {
+                            String query = "MATCH (g:Genre {mid: $id}) DETACH DELETE g";
+                            tx.run(
+                                    query,
+                                    Values.parameters("id", idGenre)
+                            );
+                            return null;
+                        }
+                );
             }
         });
     }
@@ -214,13 +253,14 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         if(ids.isEmpty()) return true;
 
-        logger.debug("Deleting genres: {}", ids.size());
+        logger.debug("[REPOSITORY] [GENRE] [DELETE] [BY IDS] genres ids: {}", ids);
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
-                DeleteResult deleteResult = this.mongoCollection.deleteMany(mongoSession, Filters.in("_id", ids.stream().map(ObjectId::new).toList()));
+                List<ObjectId> oIds = ids.stream().map(ObjectId::new).toList();
+                DeleteResult deleteResult = this.mongoCollection.deleteMany(mongoSession, Filters.in("_id", oIds));
 
                 if(deleteResult.getDeletedCount() > 0) {
                     deleteAllGenresFromNeo4j(ids);
@@ -247,9 +287,17 @@ public class GenreRepository implements GenreRepositoryInterface {
                 .filter(ObjectId::isValid)
                 .toList();
 
+        if(ids.isEmpty()) return ;
+
         this.registry.timer("neo4j.ops", "query", "delete_genre").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
-                session.run("MATCH (g:Genre) WHERE g.mid IN $ids DETACH DELETE g", parameters("ids", ids));
+                session.executeWrite(
+                        tx -> {
+                            String query = "MATCH (g:Genre) WHERE g.mid IN $ids DETACH DELETE g";
+                            tx.run(query, Values.parameters("ids", ids));
+                            return null;
+                        }
+                );
             }
         });
     }
@@ -264,7 +312,7 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         if(!ObjectId.isValid(idGenre)) return Optional.empty();
 
-        logger.debug("Retrieve genre: {}", idGenre);
+        logger.debug("[REPOSITORY] [GENRE] [FIND] [BY ID] id: {}", idGenre);
 
         Genre genre = this.mongoCollection
                 .find(Filters.eq("_id", new ObjectId(idGenre)))
@@ -289,10 +337,12 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         if(ids.isEmpty()) return List.of();
 
-        logger.debug("Retrieve genres: {}", ids.size());
+        logger.debug("[REPOSITORY] [GENRE] [FIND] [BY IDS] ids: {}", ids);
+
+        List<ObjectId> oIds = ids.stream().map(ObjectId::new).toList();
 
         return this.mongoCollection
-                .find(Filters.in("_id", ids.stream().map(ObjectId::new).toList()))
+                .find(Filters.in("_id", oIds))
                 .into(new ArrayList<>());
     }
 
@@ -303,6 +353,8 @@ public class GenreRepository implements GenreRepositoryInterface {
      */
     @Override
     public PageResult<Genre> findAll(int page, int size) {
+        logger.debug("[REPOSITORY] [GENRE] [FIND] [ALL] page: {}, size: {}", page, size);
+
         int skip = page * size;
 
         List<Genre> genres = this.mongoCollection
@@ -318,6 +370,22 @@ public class GenreRepository implements GenreRepositoryInterface {
     }
 
     /**
+     * @param GenreNames name's genre
+     * @return list of genres where name is in GenreNames
+     */
+    @Override
+    public List<Genre> findByName(List<String> GenreNames) {
+
+        if (GenreNames.isEmpty()) return List.of();
+
+        logger.debug("[REPOSITORY] [GENRE] [FIND] [BY NAME] names: {}", GenreNames);
+
+        return this.mongoCollection
+                .find(Filters.in("name", GenreNames))
+                .into(new ArrayList<>());
+    }
+
+    /**
      * @param name name of genre to search
      * @param page page number
      * @param size size of page
@@ -325,6 +393,8 @@ public class GenreRepository implements GenreRepositoryInterface {
      */
     @Override
     public PageResult<Genre> search(String name, int page, int size) {
+        logger.debug("[REPOSITORY] [GENRE] [SEARCH] name: {}, page: {}, size: {}", name, page, size);
+
         int skip = page * size;
 
         List<Genre> genres = this.mongoCollection

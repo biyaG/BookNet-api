@@ -6,6 +6,6 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReviewSummary {
-    private float rating;
-    private int count;
+    private Float rating;
+    private Integer count;
 }

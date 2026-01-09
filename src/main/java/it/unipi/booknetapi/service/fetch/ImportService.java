@@ -3,14 +3,19 @@ package it.unipi.booknetapi.service.fetch;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unipi.booknetapi.command.book.BookCreateCommand;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
+import it.unipi.booknetapi.dto.book.BookAuthorGoodReads;
 import it.unipi.booknetapi.dto.book.BookGenreGoodReads;
 import it.unipi.booknetapi.dto.book.BookGoodReads;
 import it.unipi.booknetapi.dto.book.BookResponse;
+import it.unipi.booknetapi.dto.fetch.ParameterFetch;
 import it.unipi.booknetapi.model.author.Author;
+import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.SourceFromEnum;
 import it.unipi.booknetapi.model.fetch.EntityType;
 import it.unipi.booknetapi.model.fetch.ImportLog;
 import it.unipi.booknetapi.model.genre.Genre;
+import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.review.ReviewSummary;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
 import it.unipi.booknetapi.repository.book.BookRepository;
@@ -18,6 +23,7 @@ import it.unipi.booknetapi.repository.genre.GenreRepository;
 import it.unipi.booknetapi.service.book.BookService;
 import it.unipi.booknetapi.shared.model.Source;
 import it.unipi.booknetapi.repository.fetch.ImportLogRepository;
+import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -27,9 +33,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 @Service
 public class ImportService {
@@ -61,21 +67,148 @@ public class ImportService {
     public String importData(Source source, ImportEntityType importEntityType, MultipartFile file) {
         if(file.isEmpty()) return "File is empty";
 
+        String fileUrl;
+        try {
+            fileUrl = file.getResource().getURI().toString();
+        } catch (Exception e) {
+            fileUrl = file.getOriginalFilename();
+        }
+        // String finalFileUrl = fileUrl;
+        String fileName = file.getOriginalFilename();
+        String fileContentType = file.getContentType();
+
         switch (importEntityType) {
             case GOOD_READS_BOOK -> {
-                return importGoodReadsBooks(source, file);
+                List<BookGoodReads> books = extractDataFromFile(source, file, BookGoodReads.class);
+
+                ParameterFetch<BookGoodReads> parameterFetch = ParameterFetch.<BookGoodReads>builder()
+                        .source(source)
+                        .entityType(EntityType.BOOK)
+                        .fileUrl(fileUrl)
+                        .fileName(fileName)
+                        .fileContentType(fileContentType)
+                        .data(books)
+                        .build();
+                processSaveImport(parameterFetch, this::importGoodReadsBooks);
+
+                // return importGoodReadsBooks(source, file);
+                return "Successfully processed import books.";
             }
             case GOOD_READS_AUTHOR -> {
-                return importGoodReadsAuthors(source, file);
+                List<AuthorGoodReads> authors = extractDataFromFile(source, file, AuthorGoodReads.class);
+
+                ParameterFetch<AuthorGoodReads> parameterFetch = ParameterFetch.<AuthorGoodReads>builder()
+                        .source(source)
+                        .entityType(EntityType.AUTHOR)
+                        .fileUrl(fileUrl)
+                        .fileName(fileName)
+                        .fileContentType(fileContentType)
+                        .data(authors)
+                        .build();
+                processSaveImport(parameterFetch, this::importGoodReadsAuthors);
+
+                return "Successfully processed import authors.";
             }
             case GOOD_READS_BOOK_GENRE -> {
-                return importGoodReadsGenre(source, file);
+
+                List<BookGenreGoodReads> bookGenres = extractDataFromFile(source, file, BookGenreGoodReads.class);
+                if(bookGenres == null) return "Error during read file";
+
+                ParameterFetch<BookGenreGoodReads> parameterFetch = ParameterFetch.<BookGenreGoodReads>builder()
+                        .source(source)
+                        .entityType(EntityType.GENRE)
+                        .fileUrl(fileUrl)
+                        .fileName(fileName)
+                        .fileContentType(fileContentType)
+                        .data(bookGenres)
+                        .build();
+                processSaveImport(parameterFetch, this::importGoodReadsGenre);
+
+                parameterFetch.setEntityType(EntityType.BOOK_GENRE);
+                processSaveImport(parameterFetch, this::importGoodReadsBookGenre);
+
+                return "Successfully processed import Genre";
             }
             default -> {
                 return "Unknown entity type";
             }
         }
     }
+
+    private <T> void processSaveImport(ParameterFetch<T> parameterFetch, Consumer<ParameterFetch<T>> consumer) {
+        Thread thread = new Thread(() -> {consumer.accept(parameterFetch);});
+        thread.start();
+    }
+
+    private <T> List<T> extractDataFromFile(Source source, MultipartFile file, Class<T> clazz) {
+        String fileUrl;
+        try {
+            fileUrl = file.getResource().getURI().toString();
+        } catch (Exception e) {
+            fileUrl = file.getOriginalFilename();
+        }
+        String fileName = file.getOriginalFilename();
+        String fileContentType = file.getContentType();
+
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+
+            List<T> result = new ArrayList<>();
+
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+
+                T item = objectMapper.readValue(line, clazz);
+                result.add(item);
+            }
+
+            return result;
+        } catch (Exception e) {
+            // e.printStackTrace();
+            String message = "Error processing file: " + e.getMessage();
+            logger.error(message);
+            ImportLog importLog = ImportLog.builder()
+                    .operationDate(new Date())
+                    .source(source)
+                    .success(false)
+                    .message(message)
+                    .fileName(file.getOriginalFilename())
+                    .fileType(file.getContentType())
+                    .fileUrl(fileUrl)
+                    .build();
+            importLogRepository.insert(importLog);
+            return null;
+        }
+    }
+
+    private <T> void logFetch(
+            ParameterFetch<T>  parameterFetch,
+            Long numberOfEntities,
+            Long numberOfImportedEntities,
+            List<ObjectId> ids,
+            Boolean success,
+            String message
+    ) {
+        ImportLog importLog = ImportLog.builder()
+                .operationDate(new Date())
+                .source(parameterFetch.getSource())
+                .entityType(parameterFetch.getEntityType())
+                .numberOfEntities(numberOfEntities)
+                .numberOfImportedEntities(numberOfImportedEntities)
+                .ids(ids)
+                .success(success)
+                .message(message)
+                .fileName(parameterFetch.getFileName())
+                .fileType(parameterFetch.getFileContentType())
+                .fileUrl(parameterFetch.getFileUrl())
+                .build();
+        importLogRepository.insert(importLog);
+    }
+
+
+    // ---
 
     /**
      * Entry point: This part is SYNCHRONOUS.
@@ -161,14 +294,14 @@ public class ImportService {
             cmd.setSource(SourceFromEnum.GOODREADS);
             // Default to empty list if null to prevent NullPointerException
             cmd.setImages(raw.getImageUrl() != null ? List.of(raw.getImageUrl()) : new ArrayList<>());
-            cmd.setLanguage(raw.getLanguage_code() != null ? List.of(raw.getLanguage_code()) : List.of(raw.getCountryCode()));
-            cmd.setPreview(raw.getUrl());
+            cmd.setLanguage(raw.getLanguageCode() != null ? List.of(raw.getLanguageCode()) : List.of(raw.getCountryCode()));
+            cmd.setPreview(List.of(raw.getUrl()));
 
             //cmd.setExternalId(raw.getExternalId());
 
             ReviewSummary reviewRating = new ReviewSummary();
             reviewRating.setRating(Float.parseFloat(raw.getAverageRating()));
-            reviewRating.setCount(Integer.parseInt(raw.getRating_count()));
+            reviewRating.setCount(Integer.parseInt(raw.getRatingCount()));
             cmd.setRatingReview(reviewRating);
 
             //cmd.setSimilar_booksIds(raw.getSimilarBooks().externalBookId);
@@ -198,168 +331,178 @@ public class ImportService {
         importLogRepository.insert(log);
     }
 
-    private String importGoodReadsAuthors(Source source, MultipartFile file) {
-        logger.debug("Importing GoodReads authors");
 
-        String fileUrl;
-        try {
-            fileUrl = file.getResource().getURI().toString();
-        } catch (Exception e) {
-            fileUrl = file.getOriginalFilename();
+
+    // ---
+
+    private void importGoodReadsBooks(ParameterFetch<BookGoodReads> parameterFetch) {
+        List<BookGoodReads> goodBooks = parameterFetch.getData()
+                .stream()
+                .filter(
+                        b ->
+                                b.getIsbn() != null && !b.getIsbn().isBlank()
+                                        && b.getIsbn13() != null && !b.getIsbn13().isBlank()
+                                        && b.getBookId() != null && !b.getBookId().isBlank()
+                ).toList();
+
+        List<Book> bookList = this.bookRepository.importBooks(goodBooks);
+
+        logFetch(
+                parameterFetch,
+                (long) parameterFetch.getData().size(),
+                (long) bookList.size(),
+                bookList.stream().map(Book::getId).toList(),
+                true,
+                "Successfully processed " + parameterFetch.getData().size() + " books."
+        );
+
+        Map<String, ObjectId> bookIdMap = new HashMap<>(bookList.size());
+        for(Book book : bookList) {
+            bookIdMap.put(book.getExternalId().getGoodReads(), book.getId());
         }
-        String fileName = file.getOriginalFilename();
-        String fileContentType = file.getContentType();
 
-        // Reading line by line because it is NDJSON
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-
-            List<AuthorGoodReads> authors = new ArrayList<>();
-
-            String line;
-            while ((line = reader.readLine()) != null) {
-                // Skip empty lines if any
-                if (line.trim().isEmpty()) continue;
-
-                // Parse the single line into the DTO
-                AuthorGoodReads author = objectMapper.readValue(line, AuthorGoodReads.class);
-                authors.add(author);
+        List<String> authorExternIds = new ArrayList<>();
+        for(BookGoodReads goodBook : goodBooks) {
+            if(goodBook.getAuthors() != null) {
+                List<String> externIds = goodBook.getAuthors()
+                        .stream()
+                        .map(BookAuthorGoodReads::getAuthorId)
+                        .filter(Objects::nonNull)
+                        .filter(id -> !id.isBlank())
+                        .toList();
+                authorExternIds.addAll(externIds);
             }
-
-            int authorCount = authors.size();
-            String finalFileUrl = fileUrl;
-            Runnable task = () -> {
-                try {
-                    List<Author> authorList = this.authorRepository.importAuthors(authors);
-
-                    ImportLog importLog = ImportLog.builder()
-                            .operationDate(new Date())
-                            .source(source)
-                            .entityType(EntityType.AUTHOR)
-                            .numberOfEntities((long) authors.size())
-                            .numberOfImportedEntities((long) authorList.size())
-                            .ids(authorList.stream().map(Author::getId).toList())
-                            .success(true)
-                            .message("Successfully processed " + authors.size() + " authors.")
-                            .fileName(fileName)
-                            .fileType(fileContentType)
-                            .fileUrl(finalFileUrl)
-                            .build();
-                    importLogRepository.insert(importLog);
-
-                    logger.debug("Importing GoodReads authors completed.");
-                } catch (Exception e) {
-                //e.printStackTrace();
-                    String message = "Error processing file: " + e.getMessage();
-                    logger.error(message);
-                }
-            };
-            new Thread(task).start();
-
-            return "Successfully processed " + authorCount + " authors.";
-        } catch (Exception e) {
-            // e.printStackTrace();
-            String message = "Error processing file: " + e.getMessage();
-            logger.error(message);
-            ImportLog importLog = ImportLog.builder()
-                    .operationDate(new Date())
-                    .source(source)
-                    .success(false)
-                    .message(message)
-                    .fileName(file.getOriginalFilename())
-                    .fileType(file.getContentType())
-                    .fileUrl(fileUrl)
-                    .build();
-            importLogRepository.insert(importLog);
-            return message;
         }
+
+        List<Author> authors = this.authorRepository.findByExternGoodReadIds(authorExternIds);
+        Map<String, AuthorEmbed> authorEmbedMap = new HashMap<>();
+        for(Author author : authors) {
+            authorEmbedMap.put(author.getExternalId().getGoodReads(), new AuthorEmbed(author));
+        }
+
+        Map<ObjectId, List<AuthorEmbed>> bookAuthors = new HashMap<>();
+        for(BookGoodReads goodBook : goodBooks) {
+            if(bookIdMap.containsKey(goodBook.getBookId()) && goodBook.getAuthors() != null && !goodBook.getAuthors().isEmpty()) {
+                List<AuthorEmbed> authorEmbeds = new ArrayList<>(goodBook.getAuthors().size());
+                for(BookAuthorGoodReads author: goodBook.getAuthors()) {
+                    if(author.getAuthorId() != null && !author.getAuthorId().isBlank() && authorEmbedMap.containsKey(author.getAuthorId())) {
+                        authorEmbeds.add(authorEmbedMap.get(author.getAuthorId()));
+                    }
+                }
+                bookAuthors.put(bookIdMap.get(goodBook.getBookId()), authorEmbeds);
+            }
+        }
+
+        this.bookRepository.importBooksAuthors(bookAuthors);
+
+        logger.debug("Importing GoodReads books completed.");
     }
 
-    private String importGoodReadsGenre(Source source, MultipartFile file) {
-        logger.debug("Importing GoodReads genres");
+    private void importGoodReadsAuthors(ParameterFetch<AuthorGoodReads> parameterFetch) {
+        List<Author> authorList = this.authorRepository.importAuthors(parameterFetch.getData());
 
-        String fileUrl;
-        try {
-            fileUrl = file.getResource().getURI().toString();
-        } catch (Exception e) {
-            fileUrl = file.getOriginalFilename();
+        logFetch(
+                parameterFetch,
+                (long) parameterFetch.getData().size(),
+                (long) authorList.size(),
+                authorList.stream().map(Author::getId).toList(),
+                true,
+                "Successfully processed " + parameterFetch.getData().size() + " authors."
+        );
+
+        logger.debug("Importing GoodReads authors completed.");
+    }
+
+    private void importGoodReadsGenre(ParameterFetch<BookGenreGoodReads> parameterFetch) {
+        List<String> genreStrings = new ArrayList<>(parameterFetch.getData().size());
+        for(BookGenreGoodReads genre : parameterFetch.getData()){
+            genreStrings.addAll(genre.getGenres().keySet());
         }
-        String fileName = file.getOriginalFilename();
-        String fileContentType = file.getContentType();
 
-        // Reading line by line because it is NDJSON
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+        List<Genre> genres = genreStrings.stream()
+                .distinct()
+                .map(genreString -> Genre.builder().name(genreString).build())
+                .toList();
 
-            List<BookGenreGoodReads> genreGoodReads = new ArrayList<>();
+        List<Genre> genreList = this.genreRepository.insert(genres);
 
-            String line;
-            while ((line = reader.readLine()) != null) {
-                // Skip empty lines if any
-                if (line.trim().isEmpty()) continue;
+        logFetch(
+                parameterFetch,
+                (long) genres.size(),
+                (long) genreList.size(),
+                genreList.stream().map(Genre::getId).toList(),
+                true,
+                "Successfully processed " + genres.size() + " genres."
+        );
 
-                // Parse the single line into the DTO
-                BookGenreGoodReads genre = objectMapper.readValue(line, BookGenreGoodReads.class);
-                genreGoodReads.add(genre);
-            }
+        logger.debug("Importing GoodReads genres completed.");
+    }
 
-            List<String> genreStrings = new ArrayList<>(genreGoodReads.size());
-            for(BookGenreGoodReads genre : genreGoodReads){
-                genreStrings.addAll(genre.getGenres().keySet());
-            }
+    private void importGoodReadsBookGenre(ParameterFetch<BookGenreGoodReads> parameterFetch) {
+        List<String> externBookIds = parameterFetch.getData().stream().map(BookGenreGoodReads::getBookId).toList();
+        List<Book> books = this.bookRepository.findByGoodReadsExternIds(externBookIds);
+        Map<String, Book> mapExternIdBook = books.stream()
+                .filter(b -> b.getExternalId() != null && b.getExternalId().getGoodReads() != null)
+                .collect(Collectors.toMap(Book::getTitle, book -> book));
 
-            List<Genre> genres = genreStrings.stream()
-                    .distinct()
-                    .map(genreString -> Genre.builder().name(genreString).build())
+        List<String> allGenreNames = parameterFetch.getData().stream()
+                .filter(item -> item.getGenres() != null)
+                .flatMap(item -> item.getGenres().keySet().stream())
+                .toList();
+        Map<String, Genre> mapNameGenre = resolveGenres(allGenreNames);
+
+        Long updated = 0L;
+        for(BookGenreGoodReads item : parameterFetch.getData()){
+            if(item.getBookId() == null || item.getGenres() == null || item.getGenres().isEmpty()) continue;
+
+            Book book = mapExternIdBook.get(item.getBookId());
+            if(book == null) continue;
+
+            List<GenreEmbed> genreEmbeds = item.getGenres()
+                    .keySet()
+                    .stream()
+                    .map(mapNameGenre::get)
+                    .filter(Objects::nonNull)
+                    .map(GenreEmbed::new)
                     .toList();
 
-            int genreCount = genres.size();
-            String finalFileUrl = fileUrl;
-            Runnable task = () -> {
-                try {
-                    List<Genre> genreList = this.genreRepository.insert(genres);
+            if(genreEmbeds.isEmpty()) continue;
 
-                    ImportLog importLog = ImportLog.builder()
-                            .operationDate(new Date())
-                            .source(source)
-                            .entityType(EntityType.GENRE)
-                            .numberOfEntities((long) genres.size())
-                            .numberOfImportedEntities((long) genreList.size())
-                            .ids(genreList.stream().map(Genre::getId).toList())
-                            .success(true)
-                            .message("Successfully processed " + genres.size() + " genres.")
-                            .fileName(fileName)
-                            .fileType(fileContentType)
-                            .fileUrl(finalFileUrl)
-                            .build();
-                    importLogRepository.insert(importLog);
-
-                    logger.debug("Importing GoodReads genres completed.");
-                } catch (Exception e) {
-//                    e.printStackTrace();
-                    String message = "Error processing file: " + e.getMessage();
-                    logger.error(message);
-                }
-            };
-            new Thread(task).start();
-
-            return "Successfully processed " + genreCount + " genres.";
-        } catch (Exception e) {
-            // e.printStackTrace();
-            String message = "Error processing file: " + e.getMessage();
-            logger.error(message);
-            ImportLog importLog = ImportLog.builder()
-                    .operationDate(new Date())
-                    .source(source)
-                    .success(false)
-                    .message(message)
-                    .fileName(file.getOriginalFilename())
-                    .fileType(file.getContentType())
-                    .fileUrl(fileUrl)
-                    .build();
-            importLogRepository.insert(importLog);
-            return message;
+            if(this.bookRepository.updateGenres(book.getId().toHexString(), genreEmbeds)) updated++;
         }
+
+        logFetch(
+                parameterFetch,
+                (long) externBookIds.size(),
+                updated,
+                new ArrayList<>(),
+                true,
+                "Successfully processed " + externBookIds.size() + " book genres."
+        );
+
+        logger.debug("Importing GoodReads book genres completed.");
+    }
+
+    private Map<String, Genre> resolveGenres(List<String> names) {
+        // Find existing genres
+        List<Genre> existingGenres = this.genreRepository.findByName(names);
+
+        Map<String, Genre> result = existingGenres.stream()
+                .collect(Collectors.toMap(Genre::getName, g -> g));
+
+        // Add missing genres
+        List<String> newGeneNames = names.stream()
+                .filter( name -> !result.containsKey(name))
+                .toList();
+        List<Genre> newGenres = newGeneNames.stream()
+                .map(name -> Genre.builder().name(name).build())
+                .toList();
+        Map<String, Genre> resultNewGenres = newGenres.stream()
+                .collect(Collectors.toMap(Genre::getName, g -> g));
+
+        result.putAll(resultNewGenres);
+
+        return result;
     }
 
 }

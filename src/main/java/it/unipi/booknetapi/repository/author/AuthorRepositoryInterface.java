@@ -32,5 +32,7 @@ public interface AuthorRepositoryInterface {
     List<Author> findAll(List<String> idAuthors);
     List<Author> find(List<ObjectId> idAuthors);
 
+    List<Author> findByExternGoodReadIds(List<String> idAuthors);
+
     void migrateAuthors();
 }

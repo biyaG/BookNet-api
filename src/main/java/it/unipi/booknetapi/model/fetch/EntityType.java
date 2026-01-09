@@ -10,6 +10,7 @@ public enum EntityType {
     BOOK("BOOK")
     , AUTHOR("AUTHOR")
     , GENRE("GENRE")
+    , BOOK_GENRE("BOOK_GENRE")
     , REVIEW("REVIEW")
     , USER("USER")
 

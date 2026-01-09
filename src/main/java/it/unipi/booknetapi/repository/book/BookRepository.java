@@ -1,24 +1,32 @@
 package it.unipi.booknetapi.repository.book;
 
 
+import com.mongodb.bulk.BulkWriteResult;
+import com.mongodb.bulk.BulkWriteUpsert;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+import com.mongodb.client.model.*;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
+import it.unipi.booknetapi.dto.book.BookGoodReads;
+import it.unipi.booknetapi.model.author.Author;
+import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.review.ReviewSummary;
+import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
+import it.unipi.booknetapi.shared.model.ExternalId;
 import it.unipi.booknetapi.shared.model.PageResult;
+import it.unipi.booknetapi.shared.utils.LanguageUtils;
+import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Values;
@@ -33,6 +41,8 @@ public class BookRepository implements BookRepositoryInterface {
 
     Logger logger = LoggerFactory.getLogger(BookRepository.class);
 
+    private final Integer batchSize;
+
     private final MongoCollection<Book> mongoCollection;
     private final Neo4jManager neo4jManager;
     private final CacheService cacheService;
@@ -43,12 +53,14 @@ public class BookRepository implements BookRepositoryInterface {
     private static final int CACHE_TTL = 3600; // 1 hour
 
     public BookRepository(
+            AppConfig appConfig,
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
             CacheService cacheService,
             MeterRegistry registry
     ) {
+        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 100;
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("books", Book.class);
         this.neo4jManager = neo4jManager;
@@ -99,7 +111,7 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(book);
         logger.debug("Saving book: {}", book);
 
-        if(book.getRatingReview() == null) book.setRatingReview(new ReviewSummary(0, 0));
+        if(book.getRatingReview() == null) book.setRatingReview(new ReviewSummary(0f, 0));
 
         try(com.mongodb.client.ClientSession session = this.mongoClient.startSession()){
             session.startTransaction();
@@ -165,7 +177,7 @@ public class BookRepository implements BookRepositoryInterface {
                 });
             }
         });
- }
+    }
 
 
     @Override
@@ -188,10 +200,269 @@ public class BookRepository implements BookRepositoryInterface {
                 return books;
             }catch (Exception e){
                 session.abortTransaction();
-                logger.error("Error occured while inserting in Neo4j: {}",e.getMessage());
+                logger.error("Error occurred while inserting in Neo4j: {}",e.getMessage());
             }
         }
         return List.of();
+    }
+
+    @Override
+    public List<Book> importBooks(List<BookGoodReads> importedBooks) {
+        Objects.requireNonNull(importedBooks);
+
+
+        logger.debug("[REPOSITORY] [BOOK] [IMPORT] Importing {} books from GoodReads", importedBooks.size());
+
+        List<Book> result = new ArrayList<>(importedBooks.size());
+
+        for(int i=0; i < importedBooks.size(); i += batchSize) {
+            int endIndex = Math.min(i + batchSize, importedBooks.size());
+
+            List<BookGoodReads> booksBatch = importedBooks.subList(i, endIndex);
+
+            List<ObjectId> ids = bulkUpSet(booksBatch);
+
+            List<Map<String, Object>> neo4jBatch = new ArrayList<>();
+
+            List<Book> books = this.mongoCollection.find(Filters.in("_id", ids))
+                    .projection(Projections.include("_id", "title", "isbn", "isbn13"))
+                    .into(new ArrayList<>());
+
+            books.forEach(book -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", book.getId());
+                map.put("title", book.getTitle());
+                map.put("isbn", book.getIsbn());
+                map.put("isbn13", book.getIsbn13());
+                neo4jBatch.add(map);
+            });
+
+            if (!neo4jBatch.isEmpty()) {
+                bulkUpdateBooksInNeo4j(neo4jBatch);
+            }
+
+            result.addAll(books);
+        }
+
+        return result;
+    }
+
+    @Override
+    public void importBooksAuthors(Map<ObjectId, List<AuthorEmbed>> bookAuthors) {
+        Objects.requireNonNull(bookAuthors);
+
+        if (bookAuthors.isEmpty()) return;
+
+        logger.debug("[IMPORT] [BOOK-AUTHORS] Processing {} books", bookAuthors.size());
+
+        // Convert Map entries to a List to enable indexed batching
+        List<Map.Entry<ObjectId, List<AuthorEmbed>>> entries = new ArrayList<>(bookAuthors.entrySet());
+
+        for (int i = 0; i < entries.size(); i += batchSize) {
+            int endIndex = Math.min(i + batchSize, entries.size());
+            List<Map.Entry<ObjectId, List<AuthorEmbed>>> batch = entries.subList(i, endIndex);
+
+            List<WriteModel<Book>> mongoBulkOps = new ArrayList<>();
+
+            Map<String, List<String>> neo4jMap = new HashMap<>();
+
+            for (Map.Entry<ObjectId, List<AuthorEmbed>> entry : batch) {
+                ObjectId bookId = entry.getKey();
+                List<AuthorEmbed> authors = entry.getValue();
+
+                mongoBulkOps.add(new UpdateOneModel<>(
+                        Filters.eq("_id", bookId),
+                        Updates.set("authors", authors)
+                ));
+
+                List<String> authorIds = authors.stream()
+                        .map(a -> a.getId().toHexString())
+                        .toList();
+
+                neo4jMap.put(bookId.toHexString(), authorIds);
+            }
+
+            if (!mongoBulkOps.isEmpty()) {
+                this.mongoCollection.bulkWrite(mongoBulkOps, new BulkWriteOptions().ordered(false));
+            }
+
+            if (!neo4jMap.isEmpty()) {
+                importBooksAuthorsInNeo4j(neo4jMap);
+            }
+        }
+
+    }
+
+    private void importBooksAuthorsInNeo4j(Map<String, List<String>> bookAuthors) {
+        if (bookAuthors.isEmpty()) return;
+
+        List<Map<String, Object>> neo4jBatch = bookAuthors.entrySet().stream()
+                .map(entry -> Map.of(
+                        "bid", entry.getKey(),
+                        "aids", entry.getValue()
+                ))
+                .toList();
+
+        // Logic:
+        // A. Match the Book (assumed to exist).
+        // B. Delete OLD relationships (Pruning).
+        // C. Create NEW relationships for every author in the list.
+        //    We MERGE the Author node to ensure it exists (creating a shell node if missing).
+        String query = """
+            UNWIND $batch AS row
+            MATCH (b:Book {mid: row.bid})
+            
+            // 1. Clear existing relationships for this book
+            WITH b, row
+            OPTIONAL MATCH (b)-[r:WRITTEN_BY]->(:Author)
+            DELETE r
+            
+            // 2. Create new relationships
+            WITH b, row
+            UNWIND row.aids AS authorId
+            MERGE (a:Author {mid: authorId})
+            MERGE (b)-[:WRITTEN_BY]->(a)
+            """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            session.executeWrite(tx -> {
+                tx.run(query, Values.parameters("batch", neo4jBatch));
+                return null;
+            });
+        }
+
+    }
+
+    private List<ObjectId> bulkUpSet(List<BookGoodReads> booksGoodReads) {
+        logger.debug("[REPOSITORY] [BOOK] [IMPORT] [MONGODB] Importing {} books from GoodReads", booksGoodReads.size());
+
+        List<WriteModel<Book>> writes = new ArrayList<>();
+
+        for(BookGoodReads bookGoodRead : booksGoodReads){
+            String goodReadsId = bookGoodRead.getBookId();
+            ExternalId externalId = ExternalId.builder().goodReads(goodReadsId).build();
+
+            List<Bson> updates = new ArrayList<>();
+            updates.add(Updates.set("externalId.goodReads", bookGoodRead.getBookId()));
+            updates.add(Updates.setOnInsert("externalId", externalId));
+
+            updates.add(Updates.setOnInsert("isbn13", bookGoodRead.getIsbn13()));
+            updates.add(Updates.setOnInsert("title", bookGoodRead.getTitle()));
+            updates.add(Updates.setOnInsert("subtitle", bookGoodRead.getTitleWithoutSeries()));
+            updates.add(Updates.setOnInsert("description", bookGoodRead.getDescription()));
+
+            if(bookGoodRead.getPublicationYear() != null && !bookGoodRead.getPublicationYear().isBlank()) {
+                try {
+                    updates.add(Updates.set("publicationYear", Integer.parseInt(bookGoodRead.getPublicationYear())));
+                } catch (NumberFormatException ignored) {}
+            }
+            if(bookGoodRead.getPublicationMonth() != null && !bookGoodRead.getPublicationMonth().isBlank()) {
+                try {
+                    updates.add(Updates.set("publicationMonth", Integer.parseInt(bookGoodRead.getPublicationMonth())));
+                } catch (NumberFormatException ignored) {}
+            }
+            if(bookGoodRead.getPublicationDay() != null && !bookGoodRead.getPublicationDay().isBlank()) {
+                try {
+                    updates.add(Updates.set("publicationDay", Integer.parseInt(bookGoodRead.getPublicationDay())));
+                } catch (NumberFormatException ignored) {}
+            }
+            if(bookGoodRead.getCountryCode() != null && !bookGoodRead.getCountryCode().isBlank()) {
+                Optional<String> optS = LanguageUtils.getLanguageFromCountry(bookGoodRead.getCountryCode());
+                updates.add(
+                        Updates.addToSet("languages", optS.orElse(bookGoodRead.getCountryCode()))
+                );
+            }
+            if(bookGoodRead.getLanguageCode() != null && !bookGoodRead.getLanguageCode().isBlank()) {
+                updates.add(
+                        Updates.addToSet("languages", bookGoodRead.getLanguageCode())
+                );
+                if(bookGoodRead.getLanguageCode().length() > 2) {
+                    updates.add(
+                            Updates.addToSet("languages", bookGoodRead.getLanguageCode().substring(0, 2))
+                    );
+                }
+            }
+            if(bookGoodRead.getImageUrl() != null && !bookGoodRead.getImageUrl().isBlank()) {
+                updates.add(Updates.addToSet("images", bookGoodRead.getImageUrl()));
+            }
+            if(bookGoodRead.getUrl() != null && !bookGoodRead.getUrl().isBlank()) {
+                updates.add(Updates.addToSet("previews", bookGoodRead.getUrl()));
+            }
+            if(bookGoodRead.getPublisher() != null && !bookGoodRead.getPublisher().isBlank()) {
+                updates.add(Updates.addToSet("publishers", bookGoodRead.getPublisher()));
+            }
+            if(bookGoodRead.getAverageRating() != null && !bookGoodRead.getAverageRating().isBlank()) {
+                try {
+                    updates.add(Updates.setOnInsert("ratingReview.rating", Float.parseFloat(bookGoodRead.getAverageRating())));
+                } catch (NumberFormatException ignored) {}
+            } else {
+                updates.add(Updates.setOnInsert("ratingReview.rating", 0f));
+            }
+            if(bookGoodRead.getRatingCount() != null) {
+                try {
+                    updates.add(Updates.setOnInsert("ratingReview.count", Integer.parseInt(bookGoodRead.getRatingCount())));
+                } catch (NumberFormatException ignored) {}
+            } else {
+                updates.add(Updates.setOnInsert("ratingReview.count", 0));
+            }
+
+            writes.add(new UpdateOneModel<>(
+                    // Filters.or(
+                            Filters.eq("isbn", bookGoodRead.getIsbn()),
+                            // Filters.eq("isbn13", bookGoodRead.getIsbn13())
+                    // ),
+
+                    Updates.combine(updates),
+
+                    new UpdateOptions().upsert(true)
+            ));
+        }
+
+        if (!writes.isEmpty()) {
+            BulkWriteResult result = this.mongoCollection
+                    .bulkWrite(writes, new BulkWriteOptions().ordered(false));
+
+            List<BulkWriteUpsert> inserts = result.getUpserts();
+
+            List<ObjectId> objectIds = new ArrayList<>();
+            for (BulkWriteUpsert insert : inserts) {
+                objectIds.add(insert.getId().asObjectId().getValue());
+            }
+            logger.debug("[REPOSITORY] [Book] [IMPORT] [MONGODB] writes {} books", objectIds.size());
+
+            return objectIds;
+        } else {
+            logger.debug("[REPOSITORY] [Book] [IMPORT] [MONGODB] writes is empty");
+        }
+
+        return List.of();
+    }
+
+    private void bulkUpdateBooksInNeo4j(List<Map<String, Object>> booksBatch) {
+        if (booksBatch.isEmpty()) return;
+
+        logger.debug("[REPOSITORY] [BOOK] [IMPORT] [NEO4J] Importing {} books", booksBatch.size());
+
+        // Cypher Logic:
+        // 1. UNWIND: Turns the list of maps into individual rows
+        // 2. MERGE: Finds a Book by its MongoDB ID ('mid'). Creates it if missing.
+        // 3. SET: Updates title and ISBNs.
+        //    Note: If 'row.isbn' is null, the property 'b.isbn' will be removed/set to null in Neo4j.
+        String query = """
+        UNWIND $batch AS row
+        MERGE (b:Book {mid: row.id})
+        SET
+            b.title = row.title,
+            b.isbn = row.isbn,
+            b.isbn13 = row.isbn13
+        """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            session.executeWrite(tx -> {
+                tx.run(query, Values.parameters("batch", booksBatch));
+                return null;
+            });
+        }
     }
 
     private void saveBooksToNeo4j(List<Book> books){
@@ -350,6 +621,8 @@ public class BookRepository implements BookRepositoryInterface {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(book);
 
+        if(!ObjectId.isValid(idBook)) return false;
+
         UpdateResult updateResult = this.mongoCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idBook)),
                 Updates.set("similar_books", book)
@@ -358,9 +631,93 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     @Override
+    public boolean updateGenres(String idBook, List<GenreEmbed> genres) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(genres);
+
+        if(!ObjectId.isValid(idBook)) return false;
+
+        logger.debug("[REPOSITORY] [BOOK] [SET GENRES] book: {}, genre size: {}", idBook, genres.size());
+
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
+            mongoSession.startTransaction();
+
+            try {
+                UpdateResult result = this.mongoCollection
+                        .updateOne(
+                                Filters.eq("_id", new ObjectId(idBook)),
+                                Updates.set("genres", genres)
+                        );
+
+                if(result.getModifiedCount() > 0) {
+                    updateGenresInNeo4J(idBook, genres);
+                    mongoSession.commitTransaction();
+                    return true;
+                } else {
+                    mongoSession.abortTransaction();
+                }
+            } catch (Exception e) {
+                mongoSession.abortTransaction();
+                logger.error("[REPOSITORY] BOOK] [SET GENRES] Error during transaction: {}", e.getMessage());
+            }
+        }
+
+        return false;
+    }
+
+    private void updateGenresInNeo4J(String idBook, List<GenreEmbed> genres) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(genres);
+
+        if(!ObjectId.isValid(idBook)) return ;
+
+        List<Map<String, String>> genreListParams = genres.stream()
+                .map(g -> Map.of(
+                        "id", g.getId().toHexString(),
+                        "name", g.getName()
+                ))
+                .toList();
+
+        String cypher = """
+            MATCH (b:Book {mid: $bookId})
+            
+            WITH b
+            OPTIONAL MATCH (b)-[r:IN_GENRE]->(:Genre)
+            DELETE r
+            
+            WITH b
+            UNWIND $genres AS gData
+            MERGE (g:Genre {mid: gData.id})
+            ON CREATE SET g.name = gData.name
+            MERGE (b)-[:IN_GENRE]->(g)
+            """;
+
+        this.registry.timer("neo4j.ops", "query", "update_book").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(
+                        tx -> {
+                            tx.run(
+                                    cypher,
+                                    Values.parameters(
+                                            "bookId", idBook,
+                                            "genres", genres
+                                    )
+                            );
+                            return null;
+                        }
+                );
+            }
+        });
+    }
+
+    @Override
     public boolean addGenre(String idBook, GenreEmbed genre) {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(genre);
+
+        if(!ObjectId.isValid(idBook)) return false;
+
+        logger.debug("[REPOSITORY] [BOOK] [ADD GENRE] author: {}, book: {}", idBook, genre.getId());
 
         UpdateResult updateResult = this.mongoCollection.updateMany(
                 Filters.eq("_id", new ObjectId(idBook)),
@@ -449,11 +806,60 @@ public class BookRepository implements BookRepositoryInterface {
                 .find(Filters.eq("title", title))
                 .into(new ArrayList<>());
 
-        if(books != null){
+        if(!books.isEmpty()){
             books.forEach(this::cacheBook);
             return Optional.of(books);
         }
         return Optional.empty();
+    }
+
+    @Override
+    public List<Book> searchByTitle(String title) {
+        Objects.requireNonNull(title);
+        if(title.isBlank()) return List.of();
+
+        /*
+        // Create a regex that matches any of the titles, ignoring case
+        // Pattern: "^(Title1|Title2|Title3)$" with CASE_INSENSITIVE flag
+        String regexPattern = "^(" + String.join("|", titles).replace("?", "\\?") + ")$";
+        Pattern pattern = Pattern.compile(regexPattern, Pattern.CASE_INSENSITIVE);
+
+
+        return this.mongoCollection
+                .find(Filters.regex("title", pattern))
+                .into(new ArrayList<>());
+        */
+        return List.of();
+    }
+
+    @Override
+    public List<Book> findByTitle(List<String> titles) {
+        Objects.requireNonNull(titles);
+
+        if(titles.isEmpty()) return List.of();
+
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [BY TITLE] titles: {}", titles);
+
+        List<Book> books = this.mongoCollection
+                .find(Filters.in("title", titles))
+                .into(new ArrayList<>());
+
+        return books;
+    }
+
+    @Override
+    public List<Book> findByGoodReadsExternIds(List<String> externBookIds) {
+        Objects.requireNonNull(externBookIds);
+
+        if(externBookIds.isEmpty()) return List.of();
+
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [BY EXTERN IDS] ids: {}", externBookIds);
+
+        List<Book> books = this.mongoCollection
+                .find(Filters.in("externalId.goodReads", externBookIds))
+                .into(new ArrayList<>());
+
+        return books;
     }
 
     @Override
