@@ -460,9 +460,14 @@ public class ImportService {
     private void importGoodReadsBookGenre(ParameterFetch<BookGenreGoodReads> parameterFetch) {
         List<String> externBookIds = parameterFetch.getData().stream().map(BookGenreGoodReads::getBookId).toList();
         List<Book> books = this.bookRepository.findByGoodReadsExternIds(externBookIds);
+
         Map<String, Book> mapExternIdBook = books.stream()
                 .filter(b -> b.getExternalId() != null && b.getExternalId().getGoodReads() != null)
-                .collect(Collectors.toMap(Book::getTitle, book -> book));
+                .collect(Collectors.toMap(
+                        b -> b.getExternalId().getGoodReads(),
+                        b -> b
+                ));
+
 
         List<String> allGenreNames = parameterFetch.getData().stream()
                 .filter(item -> item.getGenres() != null)
