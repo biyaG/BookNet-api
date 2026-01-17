@@ -28,7 +28,7 @@ public interface BookRepositoryInterface {
     boolean updateImage(String idBook, String newImageUrl);
     boolean updatePreview(String idBook, String newPreviewImageUrl);
     boolean deletePreview(String idBook, String deletePreviewImageUrl);
-    boolean updateSimilarBooks (String idBook, BookEmbed book); //adding one book inside the list similarbooks
+    boolean updateSimilarBooks (String idBook, List<BookEmbed> book); //adding one book inside the list similarbooks
     boolean updateGenres(String idBook, List<GenreEmbed> genres);
     boolean addGenre(String idBook, GenreEmbed genre);
     boolean removeGenre(String idBook, GenreEmbed genre);

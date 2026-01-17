@@ -3,10 +3,7 @@ package it.unipi.booknetapi.service.fetch;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import it.unipi.booknetapi.command.book.BookCreateCommand;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
-import it.unipi.booknetapi.dto.book.BookAuthorGoodReads;
-import it.unipi.booknetapi.dto.book.BookGenreGoodReads;
-import it.unipi.booknetapi.dto.book.BookGoodReads;
-import it.unipi.booknetapi.dto.book.BookResponse;
+import it.unipi.booknetapi.dto.book.*;
 import it.unipi.booknetapi.dto.fetch.ParameterFetch;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
@@ -129,6 +126,28 @@ public class ImportService {
 
                 return "Successfully processed import Genre";
             }
+
+            /*case GOOD_READS_BOOK_SIMILARITY -> {
+                List<BookSimilarityGoodReads> bookSimilarity = extractDataFromFile(source, file, BookSimilarityGoodReads.class);
+                if(bookSimilarity == null) return "Error during read file";
+
+                // 1. Create the parameter fetch with the correct type
+                ParameterFetch<BookSimilarityGoodReads> parameterFetch = ParameterFetch.<BookSimilarityGoodReads>builder()
+                        .source(source)
+                        .entityType(EntityType.BOOK_SIMILARITY)
+                        .fileUrl(fileUrl)
+                        .fileName(fileName)
+                        .fileContentType(fileContentType)
+                        .data(bookSimilarity)
+                        .build();
+
+                // 2. Only call the similarity import method
+                // Do NOT call this::importGoodReadsBooks here
+                processSaveImport(parameterFetch, this::importGoodReadsSimilarBooks);
+
+                return "Successfully processed import book similarity";
+            }
+*/
             default -> {
                 return "Unknown entity type";
             }
@@ -504,5 +523,22 @@ public class ImportService {
 
         return result;
     }
+
+
+    private void importGoodReadsSimilarBooks(ParameterFetch<BookGoodReads> parameterFetch) {
+        List<Book> bookList = this.bookRepository.importBooks(parameterFetch.getData());
+
+        logFetch(
+                parameterFetch,
+                (long) parameterFetch.getData().size(),
+                (long) bookList.size(),
+                bookList.stream().map(Book::getId).toList(),
+                true,
+                "Successfully processed " + parameterFetch.getData().size() + " Books."
+        );
+
+        logger.debug("Importing GoodReads Books completed.");
+    }
+
 
 }

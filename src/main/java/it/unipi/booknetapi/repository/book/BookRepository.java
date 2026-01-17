@@ -616,7 +616,7 @@ public class BookRepository implements BookRepositoryInterface {
         return handleUpdateResult(updateResult, idBook);
     }
 
-    @Override
+    /*@Override
     public boolean updateSimilarBooks(String idBook, BookEmbed book) {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(book);
@@ -626,6 +626,44 @@ public class BookRepository implements BookRepositoryInterface {
         UpdateResult updateResult = this.mongoCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idBook)),
                 Updates.set("similar_books", book)
+        );
+        return handleUpdateResult(updateResult, idBook);
+    }*/
+
+    @Override
+    public boolean updateSimilarBooks(String idBook, List <BookEmbed>  books) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(books);
+
+        if(!ObjectId.isValid(idBook)) return false;
+        logger.debug("[REPOSITORY] [BOOK] [SET BOOKS] book: {}, books size: {}", idBook, books.size());
+
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
+            mongoSession.startTransaction();
+
+            try {
+                UpdateResult result = this.mongoCollection
+                        .updateOne(
+                                Filters.eq("_id", new ObjectId(idBook)),
+                                Updates.set("books", books)
+                        );
+
+                if (result.getModifiedCount() > 0) {
+                    updateSimilarBooksInNeo4J(idBook, books);
+                    mongoSession.commitTransaction();
+                    return true;
+                } else {
+                    mongoSession.abortTransaction();
+                }
+            } catch (Exception e) {
+                mongoSession.abortTransaction();
+                logger.error("[REPOSITORY] BOOK] [SET BOOKS] Error during transaction: {}", e.getMessage());
+            }
+        }
+
+        UpdateResult updateResult = this.mongoCollection.updateOne(
+                Filters.eq("_id", new ObjectId(idBook)),
+                Updates.set("similar_books", books)
         );
         return handleUpdateResult(updateResult, idBook);
     }
@@ -709,6 +747,77 @@ public class BookRepository implements BookRepositoryInterface {
             }
         });
     }
+
+
+
+
+    private void updateSimilarBooksInNeo4J(String idBook, List<BookEmbed> books) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(books);
+
+        if(!ObjectId.isValid(idBook)) return ;
+
+        List<Map<String, String>> bookListParams = books.stream()
+                .map(g -> Map.of(
+                        "id", g.getId().toHexString(),
+                        "title", g.getTitle()
+
+                ))
+                .toList();
+
+        String cypher = """
+            MATCH (b:Book {mid: $bookId})
+            
+//            WITH b
+//            OPTIONAL MATCH (b)-[r:IN_GENRE]->(:Genre)
+//            DELETE r
+//            
+//            WITH b
+//            UNWIND $genres AS gData
+//            MERGE (g:Genre {mid: gData.id})
+//            ON CREATE SET g.name = gData.name
+//            MERGE (b)-[:IN_GENRE]->(g)
+            
+            
+                / Collect the IDs we WANT to keep
+                WITH b, [s IN $similarBooks | s.id] AS targetIds
+                
+                // 1. Delete relationships to books NOT in the new list
+                OPTIONAL MATCH (b)-[r:SIMILAR_TO]->(other:Book)
+                WHERE NOT other.mid IN targetIds
+                DELETE r
+                
+                // 2. Merge the new ones (MERGE won't duplicate if they already exist)
+                WITH b
+                UNWIND $similarBooks AS sData
+                MERGE (s:Book {mid: sData.id})
+                ON CREATE SET s.title = sData.title
+                MERGE (b)-[:SIMILAR_TO]->(s)
+            """;
+
+        this.registry.timer("neo4j.ops", "query", "similar_books").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(
+                        tx -> {
+                            tx.run(
+                                    cypher,
+                                    Values.parameters(
+                                            "bookId", idBook,
+                                            "books", books
+                                    )
+                            );
+                            return null;
+                        }
+                );
+            }
+        });
+    }
+
+
+
+
+
+
 
     @Override
     public boolean addGenre(String idBook, GenreEmbed genre) {

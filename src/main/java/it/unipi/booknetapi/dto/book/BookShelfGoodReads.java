@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class BookShelfGoodReads {
 
-    private String name;
+    private String title;
 
     // Kept as String because your JSON has it as "922" (string),
     // but you can change to Integer if you want Jackson to auto-convert it.
