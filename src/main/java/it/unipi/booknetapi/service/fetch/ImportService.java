@@ -122,18 +122,15 @@ public class ImportService {
                         .build();
                 processSaveImport(parameterFetch, this::importGoodReadsGenre);
 
-                parameterFetch.setEntityType(EntityType.BOOK_GENRE);
-                processSaveImport(parameterFetch, this::importGoodReadsBookGenre);
-
                 return "Successfully processed import Genre";
             }
 
             case GOOD_READS_BOOK_SIMILARITY -> {
-                List<BookSimilarityGoodReads> bookSimilarity = extractDataFromFile(source, file, BookSimilarityGoodReads.class);
+                List<BookGoodReads> bookSimilarity = extractDataFromFile(source, file, BookGoodReads.class);
                 if(bookSimilarity == null) return "Error during read file";
 
                 // 1. Create the parameter fetch with the correct type
-                ParameterFetch<BookSimilarityGoodReads> parameterFetch = ParameterFetch.<BookSimilarityGoodReads>builder()
+                ParameterFetch<BookGoodReads> parameterFetch = ParameterFetch.<BookGoodReads>builder()
                         .source(source)
                         .entityType(EntityType.BOOK)
                         .fileUrl(fileUrl)
@@ -455,6 +452,9 @@ public class ImportService {
         );
 
         logger.debug("Importing GoodReads genres completed.");
+
+        parameterFetch.setEntityType(EntityType.BOOK_GENRE);
+        processSaveImport(parameterFetch, this::importGoodReadsBookGenre);
     }
 
     private void importGoodReadsBookGenre(ParameterFetch<BookGenreGoodReads> parameterFetch) {
@@ -507,12 +507,12 @@ public class ImportService {
         logger.debug("Importing GoodReads book genres completed.");
     }
 
-    private void importGoodReadsSimilarBooks(ParameterFetch<BookSimilarityGoodReads> parameterFetch) {
+    private void importGoodReadsSimilarBooks(ParameterFetch<BookGoodReads> parameterFetch) {
 
         // 1. Collect all Goodreads IDs
         List<String> allBookIds = parameterFetch.getData()
                 .stream()
-                .map(BookSimilarityGoodReads::getBookId)
+                .map(BookGoodReads::getBookId)
                 .toList();
 
         // 2. Load all books from DB
@@ -528,9 +528,9 @@ public class ImportService {
 
         long updated = 0L;
 
-        for (BookSimilarityGoodReads item : parameterFetch.getData()) {
+        for (BookGoodReads item : parameterFetch.getData()) {
 
-            if (item.getBookId() == null || item.getSimilar_books() == null || item.getSimilar_books().isEmpty())
+            if (item.getBookId() == null || item.getSimilarBooks() == null || item.getSimilarBooks().isEmpty())
                 continue;
 
             // 4. Find main book
@@ -538,7 +538,7 @@ public class ImportService {
             if (mainBook == null) continue;
 
             // 5. Map similar books
-            List<BookEmbed> similarEmbeds = item.getSimilar_books()
+            List<BookEmbed> similarEmbeds = item.getSimilarBooks()
                     .stream()
                     .map(mapExternIdBook::get)
                     .filter(Objects::nonNull)

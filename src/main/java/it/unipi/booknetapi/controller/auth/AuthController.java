@@ -56,6 +56,22 @@ public class AuthController {
         return ResponseEntity.ok("Login successful.");
     }
 
+    @Operation(summary = "Login to get JWT Token")
+    @PostMapping("/login-alt")
+    public ResponseEntity<String> loginAlt(@RequestBody UserLoginRequest request, HttpServletResponse response) {
+        String token = this.authService.loginAlt(request);
+
+        if(token == null) {
+            return ResponseEntity.badRequest().body("Invalid username or password.");
+        }
+
+        response.addHeader("Authorization", "Bearer " + token);
+
+        response.addHeader("Access-Control-Expose-Headers", "Authorization");
+
+        return ResponseEntity.ok("Login successful.");
+    }
+
     @Operation(summary = "Refresh JWT Token")
     @PostMapping("/refresh")
     public ResponseEntity<String> refresh(@RequestHeader("Authorization") String token, HttpServletResponse response) {

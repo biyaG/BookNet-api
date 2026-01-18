@@ -1,11 +1,6 @@
 package it.unipi.booknetapi.service.user;
 
-import it.unipi.booknetapi.dto.user.ReaderRegistrationRequest;
-import it.unipi.booknetapi.dto.user.AdminRegistrationRequest;
 import it.unipi.booknetapi.dto.user.UserResponse;
-import it.unipi.booknetapi.model.user.Admin;
-import it.unipi.booknetapi.model.user.Reader;
-import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.model.user.User;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
 import it.unipi.booknetapi.repository.book.BookRepository;
@@ -54,7 +49,7 @@ public class UserService {
     }
 
     private void cacheUser(UserResponse user) {
-        this.cacheService.save(generateCacheKey(user.getId()), user, CACHE_TTL);
+        this.cacheService.save(generateCacheKey(user.getIdUser()), user, CACHE_TTL);
     }
 
     private void cacheUser(List<UserResponse> users) {

@@ -103,6 +103,16 @@ public class AuthService {
         return jwtService.createToken(user);
     }
 
+    public String loginAlt(UserLoginRequest loginRequest) {
+        User user = userRepository.findByUsername(loginRequest.getUsername())
+                .orElse(null);
+        if (user == null) {
+            return null;
+        }
+
+        return jwtService.createToken(user);
+    }
+
     public String refreshAccessToken(String token) {
         if(token == null) return null;
 

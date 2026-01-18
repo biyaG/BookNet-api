@@ -9,20 +9,20 @@ import lombok.*;
 @AllArgsConstructor
 public class UserSimpleResponse {
 
-    private String id;
+    private String idUser;
 
     private String name;
 
     private String imageUrl;
 
     public UserSimpleResponse(UserEmbed user) {
-        this.id = user.getId().toHexString();
+        this.idUser = user.getId().toHexString();
         this.name = user.getName();
         this.imageUrl = user.getImageUrl();
     }
 
     public UserSimpleResponse(User user) {
-        this.id = user.getId().toHexString();
+        this.idUser = user.getId().toHexString();
         this.name = user.getName();
         this.imageUrl = user.getImageUrl();
     }
