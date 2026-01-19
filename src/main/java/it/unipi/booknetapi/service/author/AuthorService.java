@@ -31,7 +31,7 @@ public class AuthorService {
     }
 
     private void cacheAuthor(AuthorResponse author) {
-        this.cacheService.save(generateCacheKey(author.getId()), author, CACHE_TTL);
+        this.cacheService.save(generateCacheKey(author.getIdAuthor()), author, CACHE_TTL);
     }
 
     private void deleteCache(String idAuthor) {
@@ -100,6 +100,22 @@ public class AuthorService {
 
         PageResult<Author> result = this.authorRepository
                 .findAll(command.getPagination().getPage(), command.getPagination().getSize());
+
+        return new PageResult<>(
+                result.getContent().stream().map(AuthorSimpleResponse::new).toList(),
+                result.getTotalElements(),
+                result.getCurrentPage(),
+                result.getPageSize()
+        );
+    }
+
+    public PageResult<AuthorSimpleResponse> searchAuthors(AuthorSearchCommand command) {
+        if(command.getName() == null || command.getName().isBlank()) return new PageResult<>(List.of(), 0, 0, 0);
+
+        int page = command.getPagination() == null ? 0 : command.getPagination().getPage();
+        int size = command.getPagination() == null ? 10 : command.getPagination().getSize();
+
+        PageResult<Author> result = this.authorRepository.search(command.getName(), page, size);
 
         return new PageResult<>(
                 result.getContent().stream().map(AuthorSimpleResponse::new).toList(),

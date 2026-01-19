@@ -12,10 +12,10 @@ import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.fetch.ImportEntityType;
 import it.unipi.booknetapi.service.fetch.ImportService;
 import it.unipi.booknetapi.service.genre.GenreService;
+import it.unipi.booknetapi.service.source.SourceService;
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
-import it.unipi.booknetapi.shared.model.SearchRequest;
 import it.unipi.booknetapi.shared.model.Source;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -33,21 +33,25 @@ public class GenreController {
     private final AuthService authService;
     private final GenreService genreService;
     private final ImportService importService;
+    private final SourceService sourceService;
 
     public GenreController(
             AuthService authService,
             GenreService genreService,
-            ImportService importService
+            ImportService importService,
+            SourceService sourceService
     ) {
         this.authService = authService;
         this.genreService = genreService;
         this.importService = importService;
+        this.sourceService = sourceService;
     }
 
 
-    @PostMapping(value = "upload/goodreads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Import genre", description = "Uploads a file containing genres in NDJSON format.")
-    public ResponseEntity<String> importGenresFromGoodreads(
+    public ResponseEntity<String> importGenres(
+            @PathVariable String idSource,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -58,7 +62,11 @@ public class GenreController {
             return ResponseEntity.badRequest().body("File is empty");
         }
 
-        return ResponseEntity.ok(this.importService.importData(Source.GOOD_READS, ImportEntityType.GOOD_READS_BOOK_GENRE, file));
+        Source source = this.sourceService.getEnumSource(idSource);
+
+        if(source == null) return ResponseEntity.badRequest().body("Invalid source");
+
+        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.BOOK_GENRE, file));
     }
 
 
@@ -132,37 +140,32 @@ public class GenreController {
     @Operation(summary = "Get all genres")
     public ResponseEntity<PageResult<GenreResponse>> getAllGenres(
             @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String name
     ) {
-        GenreListCommand command = GenreListCommand.builder()
-                .pagination(PaginationRequest.builder()
-                        .page(page != null ? page : 0)
-                        .size(size != null ? size : 10)
-                        .build())
+        PaginationRequest paginationRequest = PaginationRequest.builder()
+                .page(page != null ? page : 0)
+                .size(size != null ? size : 10)
                 .build();
 
-        return ResponseEntity.ok(this.genreService.getAllGenres(command));
-    }
+        if(name == null || name.isBlank()) {
+            GenreListCommand command = GenreListCommand.builder()
+                    .pagination(paginationRequest)
+                    .build();
 
-    @PostMapping("search")
-    @Operation(summary = "search genre")
-    public ResponseEntity<PageResult<GenreResponse>> searchGenres(
-            @RequestBody SearchRequest request,
-            @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size
-    ) {
-        if(request.getName() == null || request.getName().isBlank()) return ResponseEntity.badRequest().build(); {}
+            return ResponseEntity.ok(this.genreService.getAllGenres(command));
+        } else {
+            GenreSearchCommand command = GenreSearchCommand.builder()
+                    .name(name)
+                    .pagination(
+                            PaginationRequest.builder()
+                                    .page(page != null ? page : 0)
+                                    .size(size != null ? size : 10)
+                                    .build()
+                    ).build();
 
-        GenreSearchCommand command = GenreSearchCommand.builder()
-                .name(request.getName())
-                .pagination(
-                        PaginationRequest.builder()
-                                .page(page != null ? page : 0)
-                                .size(size != null ? size : 10)
-                                .build()
-                ).build();
-
-        return ResponseEntity.ok(this.genreService.searchGenre(command));
+            return ResponseEntity.ok(this.genreService.searchGenre(command));
+        }
     }
 
 }

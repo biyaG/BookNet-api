@@ -13,6 +13,7 @@ import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.author.AuthorService;
 import it.unipi.booknetapi.service.fetch.ImportEntityType;
 import it.unipi.booknetapi.service.fetch.ImportService;
+import it.unipi.booknetapi.service.source.SourceService;
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
@@ -33,21 +34,25 @@ public class AuthorController {
     private final AuthService authService;
     private final AuthorService authorService;
     private final ImportService importService;
+    private final SourceService sourceService;
 
     public AuthorController(
             AuthService authService,
             AuthorService authorService,
-            ImportService importService
+            ImportService importService,
+            SourceService sourceService
     ) {
         this.authService = authService;
         this.authorService = authorService;
         this.importService = importService;
+        this.sourceService = sourceService;
     }
 
 
-    @PostMapping(value = "upload/goodreads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Import author", description = "Uploads a file containing authors in NDJSON format.")
-    public ResponseEntity<String> importAuthorsFromGoodreads(
+    public ResponseEntity<String> importAuthors(
+            @PathVariable String idSource,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -58,14 +63,23 @@ public class AuthorController {
             return ResponseEntity.badRequest().body("File is empty");
         }
 
-        return ResponseEntity.ok(this.importService.importData(Source.GOOD_READS, ImportEntityType.GOOD_READS_AUTHOR, file));
+        Source source = this.sourceService.getEnumSource(idSource);
+
+        if(source == null) return ResponseEntity.badRequest().body("Invalid source");
+
+        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.AUTHOR, file));
     }
 
 
-    @GetMapping("/migration")
+    @GetMapping("/migrate")
     @Operation(summary = "Migrate author from mongodb to neo4j")
-    public ResponseEntity<String> migrateAuthor() {
-        // TODO: add authentication and admin check
+    public ResponseEntity<String> migrateAuthor(@RequestHeader("Authorization") String token) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         this.authorService.migrate();
 
         return ResponseEntity.ok("Starting migration");
@@ -138,17 +152,36 @@ public class AuthorController {
 
     @GetMapping
     @Operation(summary = "Get all authors")
-    public ResponseEntity<PageResult<AuthorSimpleResponse>> getAllAuthors(@RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
+    public ResponseEntity<PageResult<AuthorSimpleResponse>> getAllAuthors(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String name
+    ) {
 
         PaginationRequest paginationRequest = PaginationRequest.builder()
                 .page(page != null ? page : 0)
                 .size(size != null ? size : 10)
                 .build();
-        AuthorListCommand command = AuthorListCommand.builder()
-                .pagination(paginationRequest)
-                .build();
 
-        PageResult<AuthorSimpleResponse> result = this.authorService.getAllAuthors(command);
+        PageResult<AuthorSimpleResponse> result;
+        if(name == null || name.isBlank()) {
+            AuthorListCommand command = AuthorListCommand.builder()
+                    .pagination(paginationRequest)
+                    .build();
+
+            result = this.authorService.getAllAuthors(command);
+        } else {
+            AuthorSearchCommand command = AuthorSearchCommand.builder()
+                    .name(name)
+                    .pagination(
+                            PaginationRequest.builder()
+                                    .page(page != null ? page : 0)
+                                    .size(size != null ? size : 10)
+                                    .build()
+                    ).build();
+
+            result = this.authorService.searchAuthors(command);
+        }
 
         return ResponseEntity.ok(result);
     }

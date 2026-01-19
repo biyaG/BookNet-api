@@ -31,7 +31,7 @@ public class BookService {
     private static String generateCacheKey(String idBook){ return CACHE_PREFIX + idBook; }
 
     private void cacheBook(BookResponse book){
-        this.cacheService.save(generateCacheKey(book.getId()), book, CACHE_TTL);
+        this.cacheService.save(generateCacheKey(book.getIdBook()), book, CACHE_TTL);
     }
 
     private void deleteCache(String idBook){ this.cacheService.delete(generateCacheKey(idBook));}

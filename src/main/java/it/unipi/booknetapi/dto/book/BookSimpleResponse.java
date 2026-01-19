@@ -13,20 +13,20 @@ import java.util.List;
 @AllArgsConstructor
 public class BookSimpleResponse {
 
-    private String id;
+    private String idBook;
     private String title;
     private String description;
     private List<String> images;
 
     public BookSimpleResponse(Book book) {
-        this.id = book.getId().toHexString();
+        this.idBook = book.getId().toHexString();
         this.title = book.getTitle();
         this.description = book.getDescription();
         this.images = book.getImages();
     }
 
     public BookSimpleResponse(BookEmbed book) {
-        this.id = book.getId().toHexString();
+        this.idBook = book.getId().toHexString();
         this.title = book.getTitle();
         this.description = book.getDescription();
         this.images = book.getImages();

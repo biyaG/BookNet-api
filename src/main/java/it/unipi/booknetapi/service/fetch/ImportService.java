@@ -75,78 +75,86 @@ public class ImportService {
         String fileName = file.getOriginalFilename();
         String fileContentType = file.getContentType();
 
-        switch (importEntityType) {
-            case GOOD_READS_BOOK -> {
-                List<BookGoodReads> books = extractDataFromFile(source, file, BookGoodReads.class);
+        switch (source) {
+            case GOOD_READS -> {
+                switch (importEntityType) {
+                    case BOOK -> {
+                        List<BookGoodReads> books = extractDataFromFile(source, file, BookGoodReads.class);
 
-                ParameterFetch<BookGoodReads> parameterFetch = ParameterFetch.<BookGoodReads>builder()
-                        .source(source)
-                        .entityType(EntityType.BOOK)
-                        .fileUrl(fileUrl)
-                        .fileName(fileName)
-                        .fileContentType(fileContentType)
-                        .data(books)
-                        .build();
-                processSaveImport(parameterFetch, this::importGoodReadsBooks);
+                        ParameterFetch<BookGoodReads> parameterFetch = ParameterFetch.<BookGoodReads>builder()
+                                .source(source)
+                                .entityType(EntityType.BOOK)
+                                .fileUrl(fileUrl)
+                                .fileName(fileName)
+                                .fileContentType(fileContentType)
+                                .data(books)
+                                .build();
+                        processSaveImport(parameterFetch, this::importGoodReadsBooks);
 
-                // return importGoodReadsBooks(source, file);
-                return "Successfully processed import books.";
-            }
-            case GOOD_READS_AUTHOR -> {
-                List<AuthorGoodReads> authors = extractDataFromFile(source, file, AuthorGoodReads.class);
+                        // return importGoodReadsBooks(source, file);
+                        return "Successfully processed import books.";
+                    }
+                    case AUTHOR -> {
+                        List<AuthorGoodReads> authors = extractDataFromFile(source, file, AuthorGoodReads.class);
 
-                ParameterFetch<AuthorGoodReads> parameterFetch = ParameterFetch.<AuthorGoodReads>builder()
-                        .source(source)
-                        .entityType(EntityType.AUTHOR)
-                        .fileUrl(fileUrl)
-                        .fileName(fileName)
-                        .fileContentType(fileContentType)
-                        .data(authors)
-                        .build();
-                processSaveImport(parameterFetch, this::importGoodReadsAuthors);
+                        ParameterFetch<AuthorGoodReads> parameterFetch = ParameterFetch.<AuthorGoodReads>builder()
+                                .source(source)
+                                .entityType(EntityType.AUTHOR)
+                                .fileUrl(fileUrl)
+                                .fileName(fileName)
+                                .fileContentType(fileContentType)
+                                .data(authors)
+                                .build();
+                        processSaveImport(parameterFetch, this::importGoodReadsAuthors);
 
-                return "Successfully processed import authors.";
-            }
-            case GOOD_READS_BOOK_GENRE -> {
+                        return "Successfully processed import authors.";
+                    }
+                    case BOOK_GENRE -> {
 
-                List<BookGenreGoodReads> bookGenres = extractDataFromFile(source, file, BookGenreGoodReads.class);
-                if(bookGenres == null) return "Error during read file";
+                        List<BookGenreGoodReads> bookGenres = extractDataFromFile(source, file, BookGenreGoodReads.class);
+                        if(bookGenres == null) return "Error during read file";
 
-                ParameterFetch<BookGenreGoodReads> parameterFetch = ParameterFetch.<BookGenreGoodReads>builder()
-                        .source(source)
-                        .entityType(EntityType.GENRE)
-                        .fileUrl(fileUrl)
-                        .fileName(fileName)
-                        .fileContentType(fileContentType)
-                        .data(bookGenres)
-                        .build();
-                processSaveImport(parameterFetch, this::importGoodReadsGenre);
+                        ParameterFetch<BookGenreGoodReads> parameterFetch = ParameterFetch.<BookGenreGoodReads>builder()
+                                .source(source)
+                                .entityType(EntityType.GENRE)
+                                .fileUrl(fileUrl)
+                                .fileName(fileName)
+                                .fileContentType(fileContentType)
+                                .data(bookGenres)
+                                .build();
+                        processSaveImport(parameterFetch, this::importGoodReadsGenre);
 
-                return "Successfully processed import Genre";
-            }
+                        return "Successfully processed import Genre";
+                    }
 
-            case GOOD_READS_BOOK_SIMILARITY -> {
-                List<BookGoodReads> bookSimilarity = extractDataFromFile(source, file, BookGoodReads.class);
-                if(bookSimilarity == null) return "Error during read file";
+                    case BOOK_SIMILARITY -> {
+                        List<BookGoodReads> bookSimilarity = extractDataFromFile(source, file, BookGoodReads.class);
+                        if(bookSimilarity == null) return "Error during read file";
 
-                // 1. Create the parameter fetch with the correct type
-                ParameterFetch<BookGoodReads> parameterFetch = ParameterFetch.<BookGoodReads>builder()
-                        .source(source)
-                        .entityType(EntityType.BOOK)
-                        .fileUrl(fileUrl)
-                        .fileName(fileName)
-                        .fileContentType(fileContentType)
-                        .data(bookSimilarity)
-                        .build();
+                        // 1. Create the parameter fetch with the correct type
+                        ParameterFetch<BookGoodReads> parameterFetch = ParameterFetch.<BookGoodReads>builder()
+                                .source(source)
+                                .entityType(EntityType.BOOK)
+                                .fileUrl(fileUrl)
+                                .fileName(fileName)
+                                .fileContentType(fileContentType)
+                                .data(bookSimilarity)
+                                .build();
 
-                // 2. Only call the similarity import method
-                processSaveImport(parameterFetch, this::importGoodReadsSimilarBooks);
+                        // 2. Only call the similarity import method
+                        processSaveImport(parameterFetch, this::importGoodReadsSimilarBooks);
 
-                return "Successfully processed import book similarity";
+                        return "Successfully processed import book similarity";
+                    }
+
+                    default -> {
+                        return "Unknown entity type";
+                    }
+                }
             }
 
             default -> {
-                return "Unknown entity type";
+                return "Unknown source";
             }
         }
     }
@@ -327,7 +335,7 @@ public class ImportService {
 
         // Call your existing service method
         List<BookResponse> responses = bookService.importBooks(commands);
-        return responses.stream().map(BookResponse::getId).toList();
+        return responses.stream().map(BookResponse::getIdBook).toList();
     }
 
     private void createImportLog(Source source, int total, List<String> ids, String name, String type, String url, boolean success, String msg) {

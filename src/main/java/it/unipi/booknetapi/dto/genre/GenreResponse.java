@@ -11,15 +11,17 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class GenreResponse {
 
-    private String id;
+    private String idGenre;
 
     private String name;
 
     public GenreResponse(Genre genre) {
-        this.id = genre.getId().toHexString();
+        this.idGenre = genre.getId().toHexString();
         this.name = genre.getName();
     }
 
     public GenreResponse(GenreEmbed genreEmbed) {
+        this.idGenre = genreEmbed.getId().toHexString();
+        this.name = genreEmbed.getName();
     }
 }

@@ -29,6 +29,7 @@ public interface AuthorRepositoryInterface {
     Optional<Author> findById(String idAuthor);
 
     PageResult<Author> findAll(int page, int size);
+    PageResult<Author> search(String name, int page, int size);
     List<Author> findAll(List<String> idAuthors);
     List<Author> find(List<ObjectId> idAuthors);
 

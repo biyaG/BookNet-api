@@ -85,7 +85,7 @@ public class AuthController {
     }
 
     @Operation(summary = "Get User Token Data")
-    @GetMapping("/user")
+    @GetMapping("/me")
     public ResponseEntity<UserToken> getUserToken(@RequestHeader("Authorization") String token) {
         return ResponseEntity.ok(this.authService.getUserToken(token));
     }

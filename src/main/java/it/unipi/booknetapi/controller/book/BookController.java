@@ -67,7 +67,7 @@ public class BookController {
         if(file.isEmpty()){
             return ResponseEntity.badRequest().body("File is empty");
         }
-        return ResponseEntity.ok(this.importService.importData(Source.GOOD_READS, ImportEntityType.GOOD_READS_BOOK,file));
+        return ResponseEntity.ok(this.importService.importData(Source.GOOD_READS, ImportEntityType.BOOK,file));
     }
 
     @GetMapping("/{idBook}")

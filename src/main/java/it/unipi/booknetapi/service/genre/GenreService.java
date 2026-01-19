@@ -31,7 +31,7 @@ public class GenreService {
     }
 
     private void cacheGenre(GenreResponse genre) {
-        this.cacheService.save(generateCacheKey(genre.getId()), genre, CACHE_TTL);
+        this.cacheService.save(generateCacheKey(genre.getIdGenre()), genre, CACHE_TTL);
     }
 
     private void deleteCache(String idGenre) {

@@ -581,6 +581,34 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     }
 
     /**
+     * @param name name of author to search
+     * @param page page number
+     * @param size size of page
+     * @return list of authors with pagination
+     */
+    @Override
+    public PageResult<Author> search(String name, int page, int size) {
+        logger.debug("[REPOSITORY] [AUTHOR] [SEARCH] page: {}, size: {}", page, size);
+
+        int skip = page * size;
+
+        List<Author> authors = this.mongoCollection
+                .find(
+                        Filters.regex("name", "^" + name + "$", "i")
+                )
+                .skip(skip)
+                .limit(size)
+                .into(new ArrayList<>());
+
+        long total = this.mongoCollection
+                .countDocuments(
+                        Filters.regex("name", "^" + name + "$", "i")
+                );
+
+        return new PageResult<>(authors, total, page, size);
+    }
+
+    /**
      * @param idAuthors author's ids
      * @return list of authors with the given ids, or empty if not found
      */
