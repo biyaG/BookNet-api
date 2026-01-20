@@ -3,6 +3,7 @@ package it.unipi.booknetapi.controller.review;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.review.ReviewDeleteCommand;
 import it.unipi.booknetapi.command.review.ReviewGetCommand;
@@ -66,6 +67,7 @@ public class ReviewController {
 
     @GetMapping("/{idReview}")
     @Operation(summary = "Get Review by ID")
+    @SecurityRequirements(value = {})
     public ResponseEntity<ReviewResponse> getReviewById(@PathVariable String idReview) {
         ReviewGetCommand command = ReviewGetCommand.builder()
                 .id(idReview)
@@ -120,6 +122,7 @@ public class ReviewController {
 
     @GetMapping
     @Operation(summary = "Get all reviews")
+    @SecurityRequirements(value = {})
     public ResponseEntity<PageResult<ReviewResponse>> getAllReviews(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,

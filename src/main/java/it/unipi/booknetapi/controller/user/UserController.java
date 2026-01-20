@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.controller.user;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.review.ReviewByReaderListCommand;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
@@ -36,8 +37,8 @@ public class UserController {
     }
 
 
-    @Operation(summary = "Get Current User Data")
     @GetMapping
+    @Operation(summary = "Get Current User Data")
     public ResponseEntity<UserResponse> getCurrentUser(@RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -50,6 +51,7 @@ public class UserController {
 
     @GetMapping("/{idUser}")
     @Operation(summary = "Get user information")
+    @SecurityRequirements(value = {})
     public ResponseEntity<UserResponse> getUserById(@PathVariable String idUser) {
         return ResponseEntity.ok(userService.getUserById(idUser));
     }
@@ -57,6 +59,7 @@ public class UserController {
 
     @GetMapping("/{idUser}/reviews")
     @Operation(summary = "Get user reviews")
+    @SecurityRequirements(value = {})
     public ResponseEntity<PageResult<ReviewResponse>> getUserReviews(
             @PathVariable String idUser,
             @RequestParam(required = false) Integer page,

@@ -4,6 +4,7 @@ package it.unipi.booknetapi.controller.book;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.book.*;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
@@ -105,6 +106,7 @@ public class BookController {
 
     @GetMapping("/{idBook}")
     @Operation(summary = "Get book Information")
+    @SecurityRequirements(value = {})
     public ResponseEntity<BookResponse> getBookById(@PathVariable String idBook){
         BookGetCommand command = BookGetCommand.builder()
                 .id(idBook)
@@ -115,6 +117,7 @@ public class BookController {
 
     @GetMapping("/{idBook}/reviews")
     @Operation(summary = "Get book reviews")
+    @SecurityRequirements(value = {})
     public ResponseEntity<PageResult<ReviewResponse>> getBookReviews(
             @PathVariable String idBook,
             @RequestParam(required = false) Integer page,
@@ -211,6 +214,7 @@ public class BookController {
 
     @GetMapping
     @Operation(summary = "Get all Books")
+    @SecurityRequirements(value = {})
     public ResponseEntity<PageResult<BookSimpleResponse>> getAllBooks(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,

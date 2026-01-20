@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.controller.auth;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.dto.user.ReaderRegistrationRequest;
 import it.unipi.booknetapi.dto.user.UserLoginRequest;
@@ -26,22 +27,25 @@ public class AuthController {
     }
 
 
-    @Operation(summary = "Register a new Reader")
     @PostMapping("/register/reader")
+    @Operation(summary = "Register a new Reader")
+    @SecurityRequirements(value = {})
     public ResponseEntity<String> registerReader(@RequestBody ReaderRegistrationRequest request) {
         this.authService.registerReader(request);
         return ResponseEntity.ok("Reader registered successfully");
     }
 
-    @Operation(summary = "Register a new Admin")
     @PostMapping("/register/admin")
+    @Operation(summary = "Register a new Admin")
+    @SecurityRequirements(value = {})
     public ResponseEntity<String> registerAdmin(@RequestBody AdminRegistrationRequest request) {
         this.authService.registerAdmin(request);
         return ResponseEntity.ok("Admin registered successfully");
     }
 
-    @Operation(summary = "Login to get JWT Token")
     @PostMapping("/login")
+    @Operation(summary = "Login to get JWT Token")
+    @SecurityRequirements(value = {})
     public ResponseEntity<String> login(@RequestBody UserLoginRequest request, HttpServletResponse response) {
         String token = this.authService.login(request);
 
@@ -56,8 +60,9 @@ public class AuthController {
         return ResponseEntity.ok("Login successful.");
     }
 
-    @Operation(summary = "Login to get JWT Token")
     @PostMapping("/login-alt")
+    @Operation(summary = "Login to get JWT Token")
+    @SecurityRequirements(value = {})
     public ResponseEntity<String> loginAlt(@RequestBody UserLoginRequest request, HttpServletResponse response) {
         String token = this.authService.loginAlt(request);
 
@@ -72,8 +77,8 @@ public class AuthController {
         return ResponseEntity.ok("Login successful.");
     }
 
-    @Operation(summary = "Refresh JWT Token")
     @PostMapping("/refresh")
+    @Operation(summary = "Refresh JWT Token")
     public ResponseEntity<String> refresh(@RequestHeader("Authorization") String token, HttpServletResponse response) {
         String newToken = this.authService.refreshAccessToken(token);
 
@@ -84,8 +89,8 @@ public class AuthController {
         return ResponseEntity.ok("Token refreshed successfully.");
     }
 
-    @Operation(summary = "Get User Token Data")
     @GetMapping("/me")
+    @Operation(summary = "Get User Token Data")
     public ResponseEntity<UserToken> getUserToken(@RequestHeader("Authorization") String token) {
         return ResponseEntity.ok(this.authService.getUserToken(token));
     }

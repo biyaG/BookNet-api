@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.controller.source;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.dto.source.SourceCreateRequest;
 import it.unipi.booknetapi.dto.source.SourceResponse;
@@ -31,6 +32,7 @@ public class SourceController {
 
     @GetMapping
     @Operation(summary = "List of sources")
+    @SecurityRequirements(value = {})
     public ResponseEntity<List<SourceResponse>> getSources() {
         return ResponseEntity.ok(this.sourceService.getSources());
     }
@@ -55,6 +57,7 @@ public class SourceController {
 
     @GetMapping("/{idSource}")
     @Operation(summary = "Get source")
+    @SecurityRequirements(value = {})
     public ResponseEntity<SourceResponse> getSource(@PathVariable String idSource) {
         SourceResponse source =  this.sourceService.getSource(idSource);
         if(source == null) return ResponseEntity.notFound().build();

@@ -3,6 +3,7 @@ package it.unipi.booknetapi.controller.author;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.author.*;
 import it.unipi.booknetapi.dto.author.AuthorCreateRequest;
@@ -85,8 +86,9 @@ public class AuthorController {
         return ResponseEntity.ok("Starting migration");
     }
 
-   @GetMapping("/{idAuthor}")
+    @GetMapping("/{idAuthor}")
     @Operation(summary = "Get author information")
+    @SecurityRequirements(value = {})
     public ResponseEntity<AuthorResponse> getAuthorById(@PathVariable String idAuthor) {
         AuthorGetCommand command = AuthorGetCommand.builder()
                 .id(idAuthor)
@@ -152,6 +154,7 @@ public class AuthorController {
 
     @GetMapping
     @Operation(summary = "Get all authors")
+    @SecurityRequirements(value = {})
     public ResponseEntity<PageResult<AuthorSimpleResponse>> getAllAuthors(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,

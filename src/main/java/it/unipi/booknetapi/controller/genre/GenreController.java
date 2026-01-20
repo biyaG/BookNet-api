@@ -3,6 +3,7 @@ package it.unipi.booknetapi.controller.genre;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.genre.*;
 import it.unipi.booknetapi.dto.genre.GenreCreateRequest;
@@ -72,6 +73,7 @@ public class GenreController {
 
     @GetMapping("/{idGenre}")
     @Operation(summary = "Get genre information")
+    @SecurityRequirements(value = {})
     public ResponseEntity<GenreResponse> getGenreById(@PathVariable String idGenre) {
         GenreGetCommand command = GenreGetCommand.builder()
                 .id(idGenre)
@@ -138,6 +140,7 @@ public class GenreController {
 
     @GetMapping
     @Operation(summary = "Get all genres")
+    @SecurityRequirements(value = {})
     public ResponseEntity<PageResult<GenreResponse>> getAllGenres(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
