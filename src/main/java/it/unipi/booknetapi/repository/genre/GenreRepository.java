@@ -9,7 +9,6 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import io.micrometer.core.instrument.MeterRegistry;
-import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.genre.Genre;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
