@@ -110,7 +110,27 @@ public class BookService {
     }
 
     public PageResult<BookSimpleResponse> getAllBooks(BookListCommand command){
-        PageResult<Book> result = this.bookRepository.findAll(command.getPagination().getPage(),command.getPagination().getSize());
+        int page = command.getPagination() == null ? 0 : command.getPagination().getPage();
+        int size = command.getPagination() == null ? 10 : command.getPagination().getSize();
+
+        PageResult<Book> result = this.bookRepository.findAll(page, size);
+
+        return new PageResult<>(
+                result.getContent().stream().map(BookSimpleResponse::new).toList(),
+                result.getTotalElements(),
+                result.getCurrentPage(),
+                result.getPageSize()
+        );
+    }
+
+
+    public PageResult<BookSimpleResponse> searchBooks(BookSearchCommand command){
+        if(command.getTitle() == null || command.getTitle().isBlank()) return new PageResult<>(List.of(), 0, 0, 0);
+
+        int page = command.getPagination() == null ? 0 : command.getPagination().getPage();
+        int size = command.getPagination() == null ? 10 : command.getPagination().getSize();
+
+        PageResult<Book> result = this.bookRepository.search(command.getTitle(), page, size);
 
         return new PageResult<>(
                 result.getContent().stream().map(BookSimpleResponse::new).toList(),

@@ -4,6 +4,7 @@ package it.unipi.booknetapi.controller.book;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.book.*;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
 import it.unipi.booknetapi.command.review.ReviewCreateCommand;
@@ -18,6 +19,7 @@ import it.unipi.booknetapi.service.book.BookService;
 import it.unipi.booknetapi.service.fetch.ImportEntityType;
 import it.unipi.booknetapi.service.fetch.ImportService;
 import it.unipi.booknetapi.service.review.ReviewService;
+import it.unipi.booknetapi.service.source.SourceService;
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
@@ -34,6 +36,7 @@ import java.util.List;
 
 
 @RestController
+@Tag(name = "Book", description = "Book endpoints")
 @RequestMapping("/book")
 public class BookController {
 
@@ -41,33 +44,63 @@ public class BookController {
     private final BookService bookService;
     private final ImportService importService;
     private final ReviewService reviewService;
+    private final SourceService sourceService;
 
 
     public BookController(
             AuthService authService,
             BookService bookService,
             ImportService importService,
-            ReviewService reviewService
+            ReviewService reviewService,
+            SourceService sourceService
     ) {
         this.bookService = bookService;
         this.importService = importService;
         this.authService = authService;
         this.reviewService = reviewService;
+        this.sourceService = sourceService;
     }
 
-    @PostMapping(value = "upload/goodreads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Import book", description= "Uploads a file containing books in NDJSON format.")
-    public ResponseEntity<String> importBooksFromGoodreads(
+    public ResponseEntity<String> importBooks(
+            @PathVariable String idSource,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
             )
-            @RequestParam("file")MultipartFile file
+            @RequestParam("file") MultipartFile file
             ){
         if(file.isEmpty()){
             return ResponseEntity.badRequest().body("File is empty");
         }
-        return ResponseEntity.ok(this.importService.importData(Source.GOOD_READS, ImportEntityType.BOOK,file));
+
+        Source source = this.sourceService.getEnumSource(idSource);
+
+        if(source == null) return ResponseEntity.badRequest().body("Invalid source");
+
+        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.BOOK,file));
+    }
+
+    @PostMapping(value = "upload/similarity/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Import book", description= "Uploads a file containing books in NDJSON format.")
+    public ResponseEntity<String> importBooksSimilarity(
+            @PathVariable String idSource,
+            @Parameter(
+                    description = "The NDJSON file to upload",
+                    content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
+            )
+            @RequestParam("file") MultipartFile file
+            ){
+        if(file.isEmpty()){
+            return ResponseEntity.badRequest().body("File is empty");
+        }
+
+        Source source = this.sourceService.getEnumSource(idSource);
+
+        if(source == null) return ResponseEntity.badRequest().body("Invalid source");
+
+        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.BOOK_SIMILARITY,file));
     }
 
     @GetMapping("/{idBook}")
@@ -178,16 +211,31 @@ public class BookController {
 
     @GetMapping
     @Operation(summary = "Get all Books")
-    public ResponseEntity<PageResult<BookSimpleResponse>> getAllBooks(@RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size){
+    public ResponseEntity<PageResult<BookSimpleResponse>> getAllBooks(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String name
+    ){
 
         PaginationRequest paginationRequest = PaginationRequest.builder()
                 .page(page != null ? page : 0)
                 .size(size != null ? size : 10)
                 .build();
-        BookListCommand command = BookListCommand.builder()
-                .pagination(paginationRequest)
-                .build();
-        PageResult<BookSimpleResponse> result = this.bookService.getAllBooks(command);
-        return ResponseEntity.ok(result);
+
+        if(name == null || name.isBlank()) {
+            BookListCommand command = BookListCommand.builder()
+                    .pagination(paginationRequest)
+                    .build();
+            PageResult<BookSimpleResponse> result = this.bookService.getAllBooks(command);
+            return ResponseEntity.ok(result);
+        } else {
+            BookSearchCommand command = BookSearchCommand.builder()
+                    .pagination(paginationRequest)
+                    .title(name)
+                    .build();
+            PageResult<BookSimpleResponse> result = this.bookService.searchBooks(command);
+            return ResponseEntity.ok(result);
+        }
     }
+
 }

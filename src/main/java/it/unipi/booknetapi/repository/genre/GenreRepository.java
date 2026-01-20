@@ -393,6 +393,8 @@ public class GenreRepository implements GenreRepositoryInterface {
      */
     @Override
     public PageResult<Genre> search(String name, int page, int size) {
+        Objects.requireNonNull(name);
+
         logger.debug("[REPOSITORY] [GENRE] [SEARCH] name: {}, page: {}, size: {}", name, page, size);
 
         int skip = page * size;

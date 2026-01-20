@@ -34,6 +34,7 @@ public interface BookRepositoryInterface {
     boolean removeGenre(String idBook, GenreEmbed genre);
 
     PageResult<Book> findAll(int page, int size);
+    PageResult<Book> search(String title, int page, int size);
     Optional<Book> findById(String idBook);
     Optional<List<Book>> findByTitle(String title);
     List<Book> searchByTitle(String title);

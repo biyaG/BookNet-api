@@ -49,7 +49,7 @@ public class ReviewService {
     }
 
     private void cacheReview(ReviewResponse review) {
-        this.cacheService.save(generateCacheKey(review.getId()), review, CACHE_TTL);
+        this.cacheService.save(generateCacheKey(review.getIdReview()), review, CACHE_TTL);
     }
 
     private void deleteCache(String idReview) {

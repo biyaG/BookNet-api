@@ -11,9 +11,9 @@ import java.util.Date;
 @AllArgsConstructor
 public class ReviewResponse {
 
-    private String id;
+    private String idReview;
 
-    private String bookId;
+    private String idBook;
     private UserSimpleResponse user;
 
     private Float rating;
@@ -21,8 +21,8 @@ public class ReviewResponse {
     private Date dateAdded;
 
     public ReviewResponse(Review review) {
-        this.id = review.getId().toHexString();
-        this.bookId = review.getBookId().toHexString();
+        this.idReview = review.getId().toHexString();
+        this.idBook = review.getBookId().toHexString();
         this.user = new UserSimpleResponse(review.getUser());
         this.rating = review.getRating();
         this.comment = review.getComment();

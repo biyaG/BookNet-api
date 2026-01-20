@@ -973,6 +973,8 @@ public class BookRepository implements BookRepositoryInterface {
 
     @Override
     public PageResult<Book> findAll(int page, int size) {
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [ALL] page: {}, size: {}", page, size);
+
         int skip = page * size;
 
         List<Book> books = this.mongoCollection
@@ -982,10 +984,31 @@ public class BookRepository implements BookRepositoryInterface {
                 .into(new ArrayList<>());
 
         long total = this.mongoCollection.countDocuments();
-        cacheBookInThread(books); ////
+        // cacheBookInThread(books); ////
+        return new PageResult<>(books, total, page, size);
+    }
+
+    @Override
+    public PageResult<Book> search(String title, int page, int size) {
+        Objects.requireNonNull(title);
+
+        logger.debug("[REPOSITORY] [BOOK] [SEARCH] title: {}, page: {}, size: {}", title, page, size);
+
+        int skip = page * size;
+
+        List<Book> books = this.mongoCollection
+                .find(
+                        Filters.regex("title", "^" + title + "$", "i")
+                ).skip(skip)
+                .limit(size)
+                .into(new ArrayList<>());
+
+        long total = this.mongoCollection
+                .countDocuments(
+                        Filters.regex("title", "^" + title + "$", "i")
+                );
+
         return new PageResult<>(books, total, page, size);
     }
 
 }
-
-
