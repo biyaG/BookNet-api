@@ -10,6 +10,7 @@ import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
+import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
@@ -560,6 +561,26 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         return author != null ? Optional.of(author) : Optional.empty();
     }
 
+    @Override
+    public List<AuthorEmbed> findAllById(List<String> authorIds) {
+
+        if (authorIds == null || authorIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<ObjectId> objectIds = authorIds.stream()
+                .map(ObjectId::new)
+                .toList();
+
+        List<AuthorEmbed> authors = new ArrayList<>();
+
+        mongoCollection
+                .find(Filters.in("_id", objectIds))
+                .forEach(author -> authors.add(new AuthorEmbed(author)
+                ));
+
+        return authors;
+    }
     /**
      * @return list of all authors with pagination
      */

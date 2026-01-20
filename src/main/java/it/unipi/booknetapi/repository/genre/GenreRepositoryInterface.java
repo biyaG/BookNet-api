@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.repository.genre;
 
 import it.unipi.booknetapi.model.genre.Genre;
+import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.shared.model.PageResult;
 
 import java.util.List;
@@ -15,6 +16,8 @@ public interface GenreRepositoryInterface {
     boolean delete(List<String> idGenres);
 
     Optional<Genre> findById(String idGenre);
+    List <GenreEmbed> findAllById(List<String> idGenre);
+
 
     List<Genre> find(List<String> idGenres);
     PageResult<Genre> findAll(int page, int size);

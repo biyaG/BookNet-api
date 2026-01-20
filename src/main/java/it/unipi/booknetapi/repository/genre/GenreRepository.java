@@ -9,7 +9,9 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import io.micrometer.core.instrument.MeterRegistry;
+import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.genre.Genre;
+import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
@@ -319,6 +321,28 @@ public class GenreRepository implements GenreRepositoryInterface {
                 .first();
 
         return genre != null ? Optional.of(genre) : Optional.empty();
+    }
+
+
+@Override
+    public List<GenreEmbed> findAllById(List<String> genreIds) {
+
+        if (genreIds == null || genreIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<ObjectId> objectIds = genreIds.stream()
+                .map(ObjectId::new)
+                .toList();
+
+        List<GenreEmbed> genres = new ArrayList<>();
+
+        mongoCollection
+                .find(Filters.in("_id", objectIds))
+                .forEach(genre -> genres.add(new GenreEmbed(genre)
+                ));
+
+        return genres;
     }
 
     /**
