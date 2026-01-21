@@ -13,8 +13,8 @@ import java.util.List;
 public class ReaderPreferenceRequest {
 
 
-    private List<String> authorIds;
-    private List<String> genreIds;
-//    private List<String> languageIds; //String or From the dataset
+    private List<String> authors;
+    private List<String> genres;
+    private List<String> languages; //String or From the dataset
 
 }

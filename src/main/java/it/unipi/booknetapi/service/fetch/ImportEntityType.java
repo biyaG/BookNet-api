@@ -5,7 +5,9 @@ public enum ImportEntityType {
     BOOK,
     AUTHOR,
     BOOK_GENRE,
-    BOOK_SIMILARITY
+    BOOK_SIMILARITY,
+    REVIEW,
+
     ;
 
     ImportEntityType(){}

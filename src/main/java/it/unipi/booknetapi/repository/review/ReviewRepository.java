@@ -1,19 +1,22 @@
 package it.unipi.booknetapi.repository.review;
 
+import com.mongodb.bulk.BulkWriteResult;
+import com.mongodb.bulk.BulkWriteUpsert;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+import com.mongodb.client.model.*;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertManyResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.model.review.Review;
+import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
+import it.unipi.booknetapi.shared.model.Source;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
@@ -33,6 +36,8 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
     Logger logger = LoggerFactory.getLogger(ReviewRepository.class);
 
+    private final Integer batchSize;
+
     private final MongoClient mongoClient;
     private final MongoCollection<Review> mongoCollection;
     private final Neo4jManager neo4jManager;
@@ -40,11 +45,14 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
 
     public ReviewRepository(
+            AppConfig appConfig,
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
             MeterRegistry registry
     ) {
+        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 100;
+
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("reviews", Review.class);
         this.neo4jManager = neo4jManager;
@@ -60,20 +68,20 @@ public class ReviewRepository implements ReviewRepositoryInterface {
     public Review insert(Review review) {
         Objects.requireNonNull(review);
 
-        logger.debug("Inserting review: {}", review);
+        logger.debug("[REPOSITORY] [REVIEW] [INSERT] Inserting review: {}", review);
 
         if (review.getBookId() == null) {
-            logger.warn("Review book id is null, cannot insert review: {}", review);
+            logger.warn("[REPOSITORY] [REVIEW] [INSERT] Review book id is null, cannot insert review: {}", review);
             return null;
         }
 
         if (review.getUser() == null || review.getUser().getId() == null) {
-            logger.warn("Review user id is null, cannot insert review: {}", review);
+            logger.warn("[REPOSITORY] [REVIEW] [INSERT] Review user id is null, cannot insert review: {}", review);
             return null;
         }
 
         if (review.getRating() == null && review.getComment() == null) {
-            logger.warn("Review rating and comment is null, cannot insert review: {}", review);
+            logger.warn("[REPOSITORY] [REVIEW] [INSERT] Review rating and comment is null, cannot insert review: {}", review);
             return null;
         }
 
@@ -92,14 +100,14 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
                     mongoSession.commitTransaction();
 
-                    logger.info("Review inserted successfully: {}", review);
+                    logger.info("[REPOSITORY] [REVIEW] [INSERT] Review inserted successfully: {}", review);
                     return review;
                 } else {
                     mongoSession.abortTransaction();
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("Error during review insertion: {}", e.getMessage());
+                logger.error("[REPOSITORY] [REVIEW] [INSERT] Error during review insertion: {}", e.getMessage());
                 return null;
             }
 
@@ -171,7 +179,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
             return List.of();
         }
 
-        logger.debug("Inserting reviews: {}", reviews.size());
+        logger.debug("[REPOSITORY] [REVIEW] [INSERT MANY] Inserting reviews: {}", reviews.size());
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -191,8 +199,98 @@ public class ReviewRepository implements ReviewRepositoryInterface {
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("Error during review insertion: {}", e.getMessage());
+                logger.error("[REPOSITORY] [REVIEW] [INSERT MANY] Error during review insertion: {}", e.getMessage());
             }
+        }
+
+        return List.of();
+    }
+
+    /**
+     * @param reviews the reviews to insert
+     * @return the inserted reviews
+     */
+    @Override
+    public List<Review> insertFromGoodReads(List<Review> reviews) {
+        Objects.requireNonNull(reviews);
+
+        reviews = reviews.stream()
+                .filter(
+                        r -> r.getBookId() != null
+                                && r.getUser() != null && r.getUser().getId() != null
+                                && (r.getRating() != null || r.getComment() != null)
+                ).collect(Collectors.toList());
+
+        if (reviews.isEmpty()) {
+            return List.of();
+        }
+
+        logger.debug("[REPOSITORY] [REVIEW] [INSERT MANY] [FROM GOODREADS] Inserting reviews: {}", reviews.size());
+
+        List<Review> result = new ArrayList<>(reviews.size());
+
+        for (int i=0; i<reviews.size(); i+=this.batchSize) {
+            int endIndex = Math.min(i + batchSize, reviews.size());
+
+            List<Review> reviewBatch = reviews.subList(i, endIndex);
+
+            List<ObjectId> ids = bulkUpsetGoodReads(reviewBatch);
+
+            List<Review> reviewsSaved = this.mongoCollection.find(Filters.in("_id", ids))
+                    .into(new ArrayList<>());
+
+            if(!reviewsSaved.isEmpty()) {
+                saveReviewToNeo4j(reviewsSaved);
+
+                result.addAll(reviewsSaved);
+            }
+        }
+
+        return result;
+    }
+
+    private List<ObjectId> bulkUpsetGoodReads(List<Review> reviews) {
+        logger.debug("[REPOSITORY] [REVIEW] [IMPORT] [MONGODB] Importing {} authors from GoodReads", reviews.size());
+
+        List<WriteModel<Review>> writes = new ArrayList<>();
+
+        for(Review review : reviews) {
+            String goodReadsId = review.getExternalId() != null ? review.getExternalId().getGoodReads() : null;
+
+            if(goodReadsId != null) {
+                writes.add(new UpdateOneModel<>(
+                        Filters.eq("externalId.goodReads", goodReadsId),
+
+                        Updates.combine(
+                                Updates.set("rating", review.getRating()),
+                                Updates.set("comment", review.getComment()),
+                                Updates.set("dateAdded", review.getDateAdded()),
+                                Updates.set("dateUpdated", review.getDateUpdated()),
+
+                                Updates.setOnInsert("source", Source.GOOD_READS),
+                                Updates.setOnInsert("externalId", review.getExternalId())
+                        ),
+
+                        new UpdateOptions().upsert(true)
+                ));
+            }
+        }
+
+        if (!writes.isEmpty()) {
+            BulkWriteResult result = this.mongoCollection
+                    .bulkWrite(writes, new BulkWriteOptions().ordered(false));
+
+            List<BulkWriteUpsert> inserts = result.getUpserts();
+
+            List<ObjectId> objectIds = new ArrayList<>();
+            for (BulkWriteUpsert insert : inserts) {
+                objectIds.add(insert.getId().asObjectId().getValue());
+            }
+            logger.debug("[REPOSITORY] [REVIEW] [IMPORT] [MONGODB] writes {} reviews", objectIds.size());
+
+            return objectIds;
+        } else {
+            logger.debug("[REPOSITORY] [REVIEW] [IMPORT] [MONGODB] writes is empty");
         }
 
         return List.of();
@@ -209,6 +307,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
         // We filter out incomplete objects to avoid NullPointerExceptions during mapping
         List<Map<String, Object>> batchData = reviews.stream()
                 .filter(r -> r.getUser() != null && r.getUser().getId() != null && r.getBookId() != null)
+                .filter(r -> r.getRating() != null)
                 .map(r -> {
                     Map<String, Object> map = new HashMap<>();
                     map.put("userId", r.getUser().getId().toHexString());

@@ -61,4 +61,8 @@ public class Book {
     }
 
 
+    public BookEmbed toEmbed() {
+        return new BookEmbed(this);
+    }
+
 }

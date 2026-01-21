@@ -55,7 +55,7 @@ public class UserRepository implements UserRepositoryInterface {
      * @return the inserted user
      */
     @Override
-    public User insert(User user) {
+    public <T extends User> T insert(T user) {
         Objects.requireNonNull(user);
 
         logger.debug("Inserting user: {}", user);
@@ -105,7 +105,7 @@ public class UserRepository implements UserRepositoryInterface {
     }
 
 
-    public User insertWithThread(User user) {
+    public <T extends User> T insertWithThread(T user) {
         Objects.requireNonNull(user);
 
         InsertOneResult insertOneResult = this.mongoCollection.insertOne(user);
@@ -144,7 +144,7 @@ public class UserRepository implements UserRepositoryInterface {
      * @return the inserted users
      */
     @Override
-    public List<User> insert(List<User> users) {
+    public <T extends User> List<T> insert(List<T> users) {
         Objects.requireNonNull(users);
         if(users.isEmpty()) return List.of();
 
@@ -156,7 +156,11 @@ public class UserRepository implements UserRepositoryInterface {
             try {
                 this.mongoCollection.insertMany(mongoSession, users);
 
-                saveReadersToNeo4j(users);
+                List<Reader> readers = users.stream()
+                        .filter(u -> u instanceof Reader)
+                        .map(u -> (Reader) u)
+                        .toList();
+                saveReadersToNeo4j(readers);
 
                 mongoSession.commitTransaction();
 
@@ -172,7 +176,7 @@ public class UserRepository implements UserRepositoryInterface {
         return List.of();
     }
 
-    private void saveReadersToNeo4j(List<User> users) {
+    private void saveReadersToNeo4j(List<Reader> users) {
         List<Map<String, Object>> noe4jBatch = new ArrayList<>();
 
         for(User user : users) {
@@ -648,7 +652,7 @@ public class UserRepository implements UserRepositoryInterface {
         return updateResult.getModifiedCount() > 0;
     }
 
-    private void addReviewInNeo4j(String idUser, String idBook, Float rating, Date date) {
+    private void addReviewInNeo4j(String idUser, String idBook, Integer rating, Date date) {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(rating);
@@ -873,5 +877,24 @@ public class UserRepository implements UserRepositoryInterface {
                 .countDocuments();
 
         return new PageResult<>(users, total, page, size);
+    }
+
+    /**
+     * @param externUserIds extern user ids
+     * @return list of user associate at these ids
+     */
+    @Override
+    public List<User> findByGoodReadsExternIds(List<String> externUserIds) {
+        Objects.requireNonNull(externUserIds);
+
+        if(externUserIds.isEmpty()) return List.of();
+
+        logger.debug("[REPOSITORY] [USER] [FIND] [BY EXTERN IDS] ids: {}", externUserIds);
+
+        List<User> users = this.mongoCollection
+                .find(Filters.in("externalId.goodReads", externUserIds))
+                .into(new ArrayList<>());
+
+        return users;
     }
 }

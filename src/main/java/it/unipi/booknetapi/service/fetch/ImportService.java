@@ -5,6 +5,7 @@ import it.unipi.booknetapi.command.book.BookCreateCommand;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.dto.book.*;
 import it.unipi.booknetapi.dto.fetch.ParameterFetch;
+import it.unipi.booknetapi.dto.review.InteractionGoodReads;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.book.Book;
@@ -14,13 +15,24 @@ import it.unipi.booknetapi.model.fetch.EntityType;
 import it.unipi.booknetapi.model.fetch.ImportLog;
 import it.unipi.booknetapi.model.genre.Genre;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
+import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.review.ReviewSummary;
+import it.unipi.booknetapi.model.user.Reader;
+import it.unipi.booknetapi.model.user.Role;
+import it.unipi.booknetapi.model.user.User;
+import it.unipi.booknetapi.model.user.UserPreference;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
 import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.genre.GenreRepository;
+import it.unipi.booknetapi.repository.review.ReviewRepository;
+import it.unipi.booknetapi.repository.user.UserRepository;
 import it.unipi.booknetapi.service.book.BookService;
+import it.unipi.booknetapi.shared.lib.authentication.PasswordGenerator;
+import it.unipi.booknetapi.shared.lib.encryption.EncryptionManager;
+import it.unipi.booknetapi.shared.model.ExternalId;
 import it.unipi.booknetapi.shared.model.Source;
 import it.unipi.booknetapi.repository.fetch.ImportLogRepository;
+import net.datafaker.Faker;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,13 +50,15 @@ import java.util.stream.Collectors;
 @Service
 public class ImportService {
 
-    private final BookService bookService;
     Logger logger = LoggerFactory.getLogger(ImportService.class);
 
     private final ImportLogRepository importLogRepository;
     private final AuthorRepository authorRepository;
     private final BookRepository bookRepository;
     private final GenreRepository genreRepository;
+    private final UserRepository userRepository;
+    private final ReviewRepository reviewRepository;
+    private final EncryptionManager encryptionManager;
     private final ObjectMapper objectMapper;
 
     public ImportService(
@@ -52,13 +66,20 @@ public class ImportService {
             AuthorRepository authorRepository,
             BookRepository bookRepository,
             GenreRepository genreRepository,
-            BookService bookService) {
+            UserRepository userRepository,
+            ReviewRepository reviewRepository,
+            EncryptionManager encryptionManager
+    ) {
         this.importLogRepository = importLogRepository;
         this.authorRepository = authorRepository;
         this.bookRepository = bookRepository;
         this.genreRepository = genreRepository;
+        this.userRepository = userRepository;
+        this.reviewRepository = reviewRepository;
+
+        this.encryptionManager = encryptionManager;
+
         this.objectMapper = new ObjectMapper();
-        this.bookService = bookService;
     }
 
 
@@ -147,6 +168,24 @@ public class ImportService {
                         return "Successfully processed import book similarity";
                     }
 
+                    case REVIEW -> {
+                        List<InteractionGoodReads> interactionGoodReads =  extractDataFromFile(source, file, InteractionGoodReads.class);
+                        if(interactionGoodReads == null) return "Error during read file";
+
+                        ParameterFetch<InteractionGoodReads> parameterFetch = ParameterFetch.<InteractionGoodReads>builder()
+                                .source(source)
+                                .entityType(EntityType.REVIEW)
+                                .fileUrl(fileUrl)
+                                .fileName(fileName)
+                                .fileContentType(fileContentType)
+                                .data(interactionGoodReads)
+                                .build();
+
+                        processSaveImport(parameterFetch, this::importGoodReadsReviews);
+
+                        return "Successfully processed import reviews";
+                    }
+
                     default -> {
                         return "Unknown entity type";
                     }
@@ -191,7 +230,7 @@ public class ImportService {
             return result;
         } catch (Exception e) {
             // e.printStackTrace();
-            String message = "Error processing file: " + e.getMessage();
+            String message = "[SERVICE] [IMPORT] [EXTRACT DATA FROM FILE] Error processing file: " + e.getMessage();
             logger.error(message);
             ImportLog importLog = ImportLog.builder()
                     .operationDate(new Date())
@@ -230,134 +269,6 @@ public class ImportService {
                 .build();
         importLogRepository.insert(importLog);
     }
-
-
-    // ---
-
-    /**
-     * Entry point: This part is SYNCHRONOUS.
-     * It starts the thread and returns a message to the user immediately.
-     */
-    public String importGoodReadsBooks(Source source, MultipartFile file) {
-        String fileName = file.getOriginalFilename();
-        String fileContentType = file.getContentType();
-        String fileUrl;
-        try {
-            fileUrl = file.getResource().getURI().toString();
-        } catch (Exception e) {
-            fileUrl = file.getOriginalFilename();
-        }
-
-        // Kick off the BACKGROUND (Async) process
-        // We pass the file stream directly to the background worker
-        this.startStreamingImport(source, file, fileName, fileContentType, fileUrl);
-
-        return "Import process started for " + fileName + ". You can check the status in the Import Logs.";
-    }
-
-    /**
-     * Background Worker: This part is ASYNCHRONOUS.
-     * It reads, parses, and saves in chunks.
-     */
-    @Async
-    protected void startStreamingImport(Source source, MultipartFile file, String fileName, String contentType, String url) {
-        List<String> allSavedIds = new ArrayList<>();
-        int totalProcessed = 0;
-        int batchSize = 100;
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-
-            List<BookGoodReads> currentBatch = new ArrayList<>();
-            String line;
-
-            while ((line = reader.readLine()) != null) {
-                if (line.trim().isEmpty()) continue;
-
-                try {
-                    // 1. Parse ONE line (Sync within the thread)
-                    BookGoodReads rawBook = objectMapper.readValue(line, BookGoodReads.class);
-                    currentBatch.add(rawBook);
-                    totalProcessed++;
-
-                    // 2. If batch is full, process and save it
-                    if (currentBatch.size() >= batchSize) {
-                        List<String> batchIds = processAndSaveBatch(currentBatch);
-                        allSavedIds.addAll(batchIds);
-                        currentBatch.clear(); // Free up memory immediately
-                    }
-                } catch (Exception e) {
-                    logger.error("Skipping a corrupted line in file: {}", e.getMessage());
-                }
-            }
-
-            // 3. Save any remaining books (last batch)
-            if (!currentBatch.isEmpty()) {
-                allSavedIds.addAll(processAndSaveBatch(currentBatch));
-            }
-
-            // 4. Record Final Success Log
-            createImportLog(source, totalProcessed, allSavedIds, fileName, contentType, url, true, "Completed successfully");
-
-        } catch (Exception e) {
-            logger.error("Critical error during streaming import: {}", e.getMessage());
-            createImportLog(source, totalProcessed, allSavedIds, fileName, contentType, url, false, "Failed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Helper to map DTOs to Commands and call the BookService
-     */
-    private List<String> processAndSaveBatch(List<BookGoodReads> batch) {
-        List<BookCreateCommand> commands = batch.stream().map(raw -> {
-            BookCreateCommand cmd = new BookCreateCommand();
-            cmd.setTitle(raw.getTitle());
-            cmd.setDescription(raw.getDescription());
-            cmd.setIsbn(raw.getIsbn());
-            cmd.setIsbn13(raw.getIsbn13());
-            cmd.setSource(SourceFromEnum.GOODREADS);
-            // Default to empty list if null to prevent NullPointerException
-            cmd.setImages(raw.getImageUrl() != null ? List.of(raw.getImageUrl()) : new ArrayList<>());
-            cmd.setLanguage(raw.getLanguageCode() != null ? List.of(raw.getLanguageCode()) : List.of(raw.getCountryCode()));
-            cmd.setPreview(List.of(raw.getUrl()));
-
-            //cmd.setExternalId(raw.getExternalId());
-
-            ReviewSummary reviewRating = new ReviewSummary();
-            reviewRating.setRating(Float.parseFloat(raw.getAverageRating()));
-            reviewRating.setCount(Integer.parseInt(raw.getRatingCount()));
-            cmd.setRatingReview(reviewRating);
-
-            //cmd.setSimilar_booksIds(raw.getSimilarBooks().externalBookId);
-            //I didn't add the above code because we need to add another field on the book-embed or on the book model so that it would be easier for us to link the similar books
-            return cmd;
-        }).toList();
-
-        // Call your existing service method
-        List<BookResponse> responses = bookService.importBooks(commands);
-        return responses.stream().map(BookResponse::getIdBook).toList();
-    }
-
-    private void createImportLog(Source source, int total, List<String> ids, String name, String type, String url, boolean success, String msg) {
-        ImportLog log = ImportLog.builder()
-                .operationDate(new Date())
-                .source(source)
-                .entityType(EntityType.BOOK)
-                .numberOfEntities((long) total)
-                .numberOfImportedEntities((long) ids.size())
-                .ids(List.of())
-                .success(success)
-                .message(msg)
-                .fileName(name)
-                .fileType(type)
-                .fileUrl(url)
-                .build();
-        importLogRepository.insert(log);
-    }
-
-
-
-    // ---
 
     private void importGoodReadsBooks(ParameterFetch<BookGoodReads> parameterFetch) {
         List<BookGoodReads> goodBooks = parameterFetch.getData()
@@ -419,7 +330,7 @@ public class ImportService {
 
         this.bookRepository.importBooksAuthors(bookAuthors);
 
-        logger.debug("Importing GoodReads books completed.");
+        logger.debug("[SERVICE] [IMPORT] [GOOD READS] [BOOK] Importing GoodReads books completed.");
     }
 
     private void importGoodReadsAuthors(ParameterFetch<AuthorGoodReads> parameterFetch) {
@@ -434,7 +345,7 @@ public class ImportService {
                 "Successfully processed " + parameterFetch.getData().size() + " authors."
         );
 
-        logger.debug("Importing GoodReads authors completed.");
+        logger.debug("[SERVICE] [IMPORT] [GOOD READS] [AUTHORS] Importing GoodReads authors completed.");
     }
 
     private void importGoodReadsGenre(ParameterFetch<BookGenreGoodReads> parameterFetch) {
@@ -459,7 +370,7 @@ public class ImportService {
                 "Successfully processed " + genres.size() + " genres."
         );
 
-        logger.debug("Importing GoodReads genres completed.");
+        logger.debug("[SERVICE] [IMPORT] [GOOD READS] [GENRE] Importing GoodReads genres completed.");
 
         parameterFetch.setEntityType(EntityType.BOOK_GENRE);
         processSaveImport(parameterFetch, this::importGoodReadsBookGenre);
@@ -512,7 +423,7 @@ public class ImportService {
                 "Successfully processed " + externBookIds.size() + " book genres."
         );
 
-        logger.debug("Importing GoodReads book genres completed.");
+        logger.debug("[SERVICE] [IMPORT] [GOOD READS] [BOOK GENRE] Importing GoodReads book genres completed.");
     }
 
     private void importGoodReadsSimilarBooks(ParameterFetch<BookGoodReads> parameterFetch) {
@@ -580,7 +491,7 @@ public class ImportService {
                 "Successfully processed similar books."
         );
 
-        logger.debug("Importing GoodReads similar books completed.");
+        logger.debug("[SERVICE] [IMPORT] [GOOD READS] [BOOK SIMILARITY] Importing GoodReads similar books completed.");
     }
 
 
@@ -605,6 +516,127 @@ public class ImportService {
         result.putAll(resultNewGenres);
 
         return result;
+    }
+
+    private Reader generateUserReaderFromGoodReads(String goodReadsUserId) {
+        Faker faker = new Faker();
+
+        ExternalId externalId = new ExternalId();
+        externalId.setGoodReads(goodReadsUserId);
+
+        UserPreference userPreference = new UserPreference();
+        Reader reader = new Reader();
+        reader.setExternalId(externalId);
+        reader.setName(faker.name().fullName());
+        reader.setUsername(
+                faker.name().firstName().toLowerCase() + "."
+                + faker.name().lastName().toLowerCase() + "@example.com"
+        );
+
+        PasswordGenerator generator = new PasswordGenerator.PasswordGeneratorBuilder()
+                .useLower(true)
+                .useUpper(true)
+                .useDigits(true)
+                .usePunctuation(true)
+                .build();
+        reader.setPassword(encryptionManager.hashPassword(generator.generate(12)));
+
+        reader.setRole(Role.READER);
+        reader.setPreference(userPreference);
+
+        return reader;
+    }
+
+    private Map<String, User> findOrGenerateUsers(List<String> externUserIds) {
+        if(externUserIds.isEmpty()) return new HashMap<>();
+
+        List<User> users = this.userRepository.findByGoodReadsExternIds(externUserIds);
+
+        List<String> existingUsersExternIds = users.stream()
+                .filter(u -> u.getExternalId() != null)
+                .map(u -> u.getExternalId().getGoodReads())
+                .toList();
+
+        List<String> usersToCreate = new ArrayList<>(externUserIds);
+        usersToCreate.removeAll(existingUsersExternIds);
+
+        List<Reader> newUsers = usersToCreate.stream()
+                .map(this::generateUserReaderFromGoodReads)
+                .toList();
+
+        List<Reader> insertedUsers = this.userRepository.insert(newUsers).reversed();
+
+        Map<String, User> mapExternIdUser = users.stream()
+                .filter(u -> u.getExternalId() != null && u.getExternalId().getGoodReads() != null)
+                .collect(Collectors.toMap(
+                        u -> u.getExternalId().getGoodReads(),
+                        u -> u
+                ));
+        mapExternIdUser.putAll(
+                insertedUsers.stream()
+                        .filter(u -> u.getExternalId() != null && u.getExternalId().getGoodReads() != null)
+                        .map(u -> (User) u)
+                        .collect(Collectors.toMap(
+                                u -> u.getExternalId().getGoodReads(),
+                                u -> u
+                        ))
+        );
+
+        return mapExternIdUser;
+    }
+
+    private void importGoodReadsReviews(ParameterFetch<InteractionGoodReads> parameterFetch) {
+        // List<String> externReviewIds = parameterFetch.getData().stream().map(InteractionGoodReads::getReviewId).toList();
+        List<String> externBookIds = parameterFetch.getData().stream().map(InteractionGoodReads::getBookId).toList();
+        List<String> externUserIds = parameterFetch.getData().stream().map(InteractionGoodReads::getUserId).toList();
+
+        List<Book> books = this.bookRepository.findByGoodReadsExternIds(externBookIds);
+
+        Map<String, Book> mapExternIdBook = books.stream()
+                .filter(b -> b.getExternalId() != null && b.getExternalId().getGoodReads() != null)
+                .collect(Collectors.toMap(
+                        b -> b.getExternalId().getGoodReads(),
+                        b -> b
+                ));
+
+        Map<String, User> mapExternIdUser = findOrGenerateUsers(externUserIds);
+
+        List<Review> reviews = new ArrayList<>(parameterFetch.getData().size());
+        for(InteractionGoodReads interactionGoodReads : parameterFetch.getData()) {
+            if(mapExternIdBook.containsKey(interactionGoodReads.getBookId()) && mapExternIdUser.containsKey(interactionGoodReads.getUserId())) {
+                ExternalId externalId = ExternalId.builder()
+                        .goodReads(interactionGoodReads.getReviewId())
+                        .build();
+
+                Review review = Review.builder()
+                        .bookId(mapExternIdBook.get(interactionGoodReads.getBookId()).getId())
+                        .user(mapExternIdUser.get(interactionGoodReads.getUserId()).toEmbed())
+                        .rating(interactionGoodReads.getRating())
+                        .comment(interactionGoodReads.getReviewTextIncomplete())
+                        .dateAdded(interactionGoodReads.getDateAdded())
+                        .dateUpdated(interactionGoodReads.getDateUpdated())
+                        .source(Source.GOOD_READS)
+                        .externalId(externalId)
+                        .build();
+
+                reviews.add(review);
+            }
+        }
+
+        List<Review> reviewsSaved = this.reviewRepository.insertFromGoodReads(reviews);
+
+        logFetch(
+                parameterFetch,
+                (long) reviews.size(),
+                (long) reviewsSaved.size(),
+                reviewsSaved.stream().map(Review::getId).toList(),
+                true,
+                "Successfully processed " + reviews.size() + " reviews."
+        );
+
+        logger.debug("[SERVICE] [IMPORT] [GOOD READS] [REVIEWS] Importing GoodReads reviews completed.");
+
+        // TODO: complete with import add in shelf, read book etc...
     }
 
 

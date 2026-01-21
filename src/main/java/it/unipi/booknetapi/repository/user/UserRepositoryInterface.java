@@ -12,22 +12,29 @@ import java.util.Optional;
 
 public interface UserRepositoryInterface {
 
-    User insert(User user);
-    List<User> insert(List<User> users);
+    <T extends User> T insert(T user);
+    <T extends User> T insertWithThread(T user);
+    <T extends User> List<T> insert(List<T> users);
+
     boolean updateName(String idUser, String newName);
     boolean updateRole(String idUser, Role newRole);
     boolean updatePassword(String idUser, String newPassword);
     boolean updateImage(String idUser, String newImageUrl);
     boolean updatePreference(String idUser, UserPreference preference);
+
     boolean updateShelf(String idUser, List<BookEmbed> shelf);
     boolean addBookInShelf(String idUser, BookEmbed book);
     boolean removeBookFromShelf(String idUser, String idBook);
+
     boolean addReview(Review review);
     boolean deleteReview(String idUser, String idBook, String idReview);
+
     boolean delete(String idUser);
     boolean deleteAll(List<String> idUsers);
+
     Optional<User> findById(String idUser);
     Optional<User> findByUsername(String username);
     PageResult<User> findAll(int page, int size);
 
+    List<User> findByGoodReadsExternIds(List<String> externUserIds);
 }

@@ -12,7 +12,7 @@ public class ReviewCreateCommand extends BaseCommand {
 
     private String bookId;
 
-    private Float rating;
+    private Integer rating;
     private String comment;
 
 }

@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ReviewCreateRequest {
 
-    private Float rating;
+    private Integer rating;
     private String comment;
 
 }

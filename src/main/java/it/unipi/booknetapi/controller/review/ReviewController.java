@@ -15,6 +15,7 @@ import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.fetch.ImportEntityType;
 import it.unipi.booknetapi.service.fetch.ImportService;
 import it.unipi.booknetapi.service.review.ReviewService;
+import it.unipi.booknetapi.service.source.SourceService;
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
@@ -35,21 +36,25 @@ public class ReviewController {
     private final AuthService authService;
     private final ImportService importService;
     private final ReviewService reviewService;
+    private final SourceService sourceService;
 
     public ReviewController(
             AuthService authService,
             ImportService importService,
-            ReviewService reviewService
+            ReviewService reviewService,
+            SourceService sourceService
     ) {
         this.authService = authService;
         this.importService = importService;
         this.reviewService = reviewService;
+        this.sourceService = sourceService;
     }
 
 
-    @PostMapping(value = "upload/goodreads", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Import reviews", description = "Uploads a file containing reviews in NDJSON format.")
     public ResponseEntity<String> importAuthorsFromGoodreads(
+            @PathVariable String idSource,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -60,9 +65,11 @@ public class ReviewController {
             return ResponseEntity.badRequest().body("File is empty");
         }
 
-        // TODO: to complete
+        Source source = this.sourceService.getEnumSource(idSource);
 
-        return ResponseEntity.ok("");
+        if(source == null) return ResponseEntity.badRequest().body("Invalid source");
+
+        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.REVIEW, file));
     }
 
     @GetMapping("/{idReview}")

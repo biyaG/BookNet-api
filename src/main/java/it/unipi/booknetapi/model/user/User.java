@@ -24,4 +24,8 @@ public class User {
 
     private ExternalId externalId;
 
+
+    public UserEmbed toEmbed() {
+        return new UserEmbed(this);
+    }
 }

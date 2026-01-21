@@ -16,7 +16,7 @@ public class ReviewResponse {
     private String idBook;
     private UserSimpleResponse user;
 
-    private Float rating;
+    private Integer rating;
     private String comment;
     private Date dateAdded;
 

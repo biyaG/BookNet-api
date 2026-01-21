@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.model.review;
 
 import it.unipi.booknetapi.model.user.UserEmbed;
+import it.unipi.booknetapi.shared.model.ExternalId;
 import it.unipi.booknetapi.shared.model.Source;
 import lombok.*;
 import org.bson.codecs.pojo.annotations.BsonId;
@@ -22,10 +23,12 @@ public class Review {
     private ObjectId bookId;
     private UserEmbed user;
 
-    private Float rating;
+    private Integer rating;
     private String comment;
     private Date dateAdded;
+    private Date dateUpdated;
 
     private Source source;
+    private ExternalId externalId = new ExternalId();
 
 }
