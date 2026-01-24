@@ -1,6 +1,9 @@
 package it.unipi.booknetapi.service.user;
 
+import it.unipi.booknetapi.dto.user.ReaderComplexResponse;
+import it.unipi.booknetapi.dto.user.ReaderResponse;
 import it.unipi.booknetapi.dto.user.UserResponse;
+import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.model.user.User;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
 import it.unipi.booknetapi.repository.book.BookRepository;
@@ -75,24 +78,48 @@ public class UserService {
     }
 
 
-
-    public UserResponse getUserById(String id) {
-
+    public ReaderComplexResponse getReaderById(String idUser) {
         try {
-            UserResponse userResponse = this.cacheService.get(generateCacheKey(id), UserResponse.class);
+            ReaderComplexResponse userResponse = this.cacheService.get(generateCacheKey(idUser), ReaderComplexResponse.class);
             if(userResponse != null) return userResponse;
         } catch (Exception ignored) {}
 
-        User user =  userRepository.findById(id).orElse(null);
+        User user =  userRepository.findById(idUser)
+                .orElse(null);
+
+        if(user == null || user.getRole() == null || user.getRole() != Role.READER) return null;
+
+        ReaderComplexResponse readerResponse = new ReaderComplexResponse(user);
+        this.cacheUser(readerResponse);
+        return readerResponse;
+    }
+
+
+    public UserResponse getUserById(String idUser) {
+
+        try {
+            UserResponse userResponse = this.cacheService.get(generateCacheKey(idUser), UserResponse.class);
+            if(userResponse != null) return userResponse;
+        } catch (Exception ignored) {}
+
+        User user =  userRepository.findById(idUser).orElse(null);
 
         if(user == null) {
             return null;
         }
 
-        UserResponse userResponse = new UserResponse(user);
-        this.cacheUser(userResponse);
+        System.out.println(user);
 
-        return userResponse;
+        if(user.getRole() == Role.ADMIN) {
+            UserResponse userResponse = new UserResponse(user);
+            this.cacheUser(userResponse);
+
+            return userResponse;
+        }
+
+        ReaderResponse readerResponse = new ReaderResponse(user);
+        this.cacheUser(readerResponse);
+        return readerResponse;
     }
 
 }

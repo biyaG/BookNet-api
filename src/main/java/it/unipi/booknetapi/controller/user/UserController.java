@@ -5,9 +5,10 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.review.ReviewByReaderListCommand;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
+import it.unipi.booknetapi.dto.user.ReaderComplexResponse;
 import it.unipi.booknetapi.dto.user.UserResponse;
+import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
-import it.unipi.booknetapi.service.author.AuthorService;
 import it.unipi.booknetapi.service.review.ReviewService;
 import it.unipi.booknetapi.service.user.UserService;
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
@@ -46,6 +47,11 @@ public class UserController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
+        if(userToken.getRole() == Role.ADMIN) {
+            return ResponseEntity.ok(userService.getUserById(userToken.getIdUser()));
+        }
+
+        // return ResponseEntity.ok(userService.getReaderById(userToken.getIdUser()));
         return ResponseEntity.ok(userService.getUserById(userToken.getIdUser()));
     }
 
@@ -53,9 +59,20 @@ public class UserController {
     @Operation(summary = "Get user information")
     @SecurityRequirements(value = {})
     public ResponseEntity<UserResponse> getUserById(@PathVariable String idUser) {
-        return ResponseEntity.ok(userService.getUserById(idUser));
+        UserResponse user = userService.getUserById(idUser);
+        if(user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        return ResponseEntity.ok(user);
     }
 
+
+    @GetMapping("/reader/{idUser}")
+    @Operation(summary = "Get user information")
+    @SecurityRequirements(value = {})
+    public ResponseEntity<ReaderComplexResponse> getUserReaderById(@PathVariable String idUser) {
+        ReaderComplexResponse reader = userService.getReaderById(idUser);
+        if(reader == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        return ResponseEntity.ok(reader);
+    }
 
     @GetMapping("/{idUser}/reviews")
     @Operation(summary = "Get user reviews")

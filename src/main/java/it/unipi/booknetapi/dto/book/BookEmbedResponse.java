@@ -1,9 +1,8 @@
-package it.unipi.booknetapi.model.book;
+package it.unipi.booknetapi.dto.book;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.bson.types.ObjectId;
+import it.unipi.booknetapi.model.book.BookEmbed;
+import it.unipi.booknetapi.model.book.FormatTypeEnum;
+import lombok.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,23 +10,21 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class BookEmbed {
+public class BookEmbedResponse {
 
-    private ObjectId id;
+    private String idBook;
     private String title;
     private String description;
     private Integer numPage;
     private FormatTypeEnum format;
     private List<String> images = new ArrayList<>();
-//    private String externalBookId; //We should have this because that is how we can link the similarbooks
 
-    public BookEmbed(Book book) {
-        this.id = book.getId();
+    public BookEmbedResponse(BookEmbed book) {
+        this.idBook = book.getId().toHexString();
         this.title = book.getTitle();
         this.description = book.getDescription();
         this.numPage = book.getNumPage();
         this.format = book.getFormat();
         this.images = book.getImages();
     }
-
 }
