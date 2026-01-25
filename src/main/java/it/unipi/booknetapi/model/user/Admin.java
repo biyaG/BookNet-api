@@ -7,8 +7,8 @@ import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @BsonDiscriminator(value = "admin")
-public class Admin extends User {
+public class Admin extends InternalUser {
 
-
+    private Role role = Role.ADMIN;
 
 }

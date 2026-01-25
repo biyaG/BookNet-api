@@ -10,7 +10,9 @@ import java.util.List;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @BsonDiscriminator(value = "reader")
-public class Reader extends User {
+public class Reader extends InternalUser {
+
+    private Role role = Role.READER;
 
     private List<ObjectId> reviews;
     private List<UserBookShelf> shelf;
