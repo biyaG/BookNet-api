@@ -3,8 +3,10 @@ package it.unipi.booknetapi.dto.user;
 import it.unipi.booknetapi.model.user.User;
 import it.unipi.booknetapi.model.user.UserEmbed;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Data
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserSimpleResponse {

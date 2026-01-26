@@ -4,18 +4,20 @@ import lombok.Getter;
 
 @Getter
 public enum Role {
-    ADMIN("ADMIN", 0),
-    READER("READER", 1),
-    REVIEWER("REVIEWER", 2),
+    Admin("Admin", 0, false),
+    Reader("Reader", 1, true),
+    Reviewer("Reviewer", 2, true),
 
     ;
 
     private final String name;
     private final int type;
+    private final boolean addInNeo4j;
 
-    Role(String name, int type) {
+    Role(String name, int type, boolean addInNeo4j) {
         this.name = name;
         this.type = type;
+        this.addInNeo4j = addInNeo4j;
     }
 
 }

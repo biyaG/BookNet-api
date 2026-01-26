@@ -8,9 +8,8 @@ import java.util.List;
 
 @Data
 @NoArgsConstructor
-// @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class ReaderResponse extends UserResponse {
+public class ReaderResponse extends InternalUserResponse {
 
     private List<ReviewResponse> reviews = List.of();
 

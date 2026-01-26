@@ -2,15 +2,17 @@ package it.unipi.booknetapi.model.user;
 
 import it.unipi.booknetapi.shared.model.ExternalId;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
 @Data
+@SuperBuilder
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-@BsonDiscriminator(value = "reviewer")
+@BsonDiscriminator(key = "role", value = "Reviewer")
 public class Reviewer extends User {
 
-    private Role role = Role.REVIEWER;
+    private Role role = Role.Reviewer;
 
     private ExternalId externalId;
 

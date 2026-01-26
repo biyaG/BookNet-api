@@ -91,7 +91,7 @@ public class ReviewController {
     ) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -113,7 +113,7 @@ public class ReviewController {
     ) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -137,7 +137,7 @@ public class ReviewController {
     ) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 

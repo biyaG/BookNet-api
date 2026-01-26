@@ -2,11 +2,12 @@ package it.unipi.booknetapi.command.genre;
 
 import it.unipi.booknetapi.shared.command.BaseCommand;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import java.util.List;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)

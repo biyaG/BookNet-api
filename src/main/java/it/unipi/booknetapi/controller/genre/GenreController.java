@@ -87,7 +87,7 @@ public class GenreController {
     public ResponseEntity<String> deleteGenreById(@PathVariable String idGenre, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -106,7 +106,7 @@ public class GenreController {
     public ResponseEntity<String> deleteAllGenres(@RequestBody List<String> ids, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -125,7 +125,7 @@ public class GenreController {
     public ResponseEntity<GenreResponse> createGenre(@RequestBody GenreCreateRequest request, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 

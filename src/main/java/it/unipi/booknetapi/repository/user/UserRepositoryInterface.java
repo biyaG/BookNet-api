@@ -2,9 +2,7 @@ package it.unipi.booknetapi.repository.user;
 
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.review.Review;
-import it.unipi.booknetapi.model.user.Role;
-import it.unipi.booknetapi.model.user.User;
-import it.unipi.booknetapi.model.user.UserPreference;
+import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.shared.model.PageResult;
 
 import java.util.List;
@@ -33,8 +31,13 @@ public interface UserRepositoryInterface {
     boolean deleteAll(List<String> idUsers);
 
     Optional<User> findById(String idUser);
-    Optional<User> findByUsername(String username);
-    PageResult<User> findAll(int page, int size);
 
-    List<User> findByGoodReadsExternIds(List<String> externUserIds);
+    Optional<InternalUser> findByUsername(String username);
+
+    PageResult<User> findAll(int page, int size);
+    PageResult<Admin> findAllAdmin(int page, int size);
+    PageResult<Reader> findAllReader(int page, int size);
+    PageResult<Reviewer> findAllReviewer(int page, int size);
+
+    List<Reviewer> findByGoodReadsExternIds(List<String> externUserIds);
 }

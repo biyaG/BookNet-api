@@ -3,9 +3,10 @@ package it.unipi.booknetapi.command.author;
 import it.unipi.booknetapi.shared.command.BaseCommand;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)

@@ -4,9 +4,10 @@ import it.unipi.booknetapi.dto.author.AuthorCreateRequest;
 import it.unipi.booknetapi.shared.command.BaseCommand;
 import it.unipi.booknetapi.shared.model.ExternalId;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)

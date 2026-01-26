@@ -132,7 +132,7 @@ public class ReviewService {
         if(command.getIds() == null || command.getIds().isEmpty()) return false;
         if(!command.hasUser()) return false;
 
-        if(command.getUserToken().getRole() != Role.ADMIN) return false;
+        if(command.getUserToken().getRole() != Role.Admin) return false;
 
         boolean result = this.reviewRepository.delete(command.getIds());
 

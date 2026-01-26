@@ -2,9 +2,10 @@ package it.unipi.booknetapi.shared.command;
 
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Data
-// @Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class BaseCommand {

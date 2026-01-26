@@ -4,9 +4,10 @@ import it.unipi.booknetapi.dto.user.UserCreateRequest;
 import it.unipi.booknetapi.dto.user.AdminRegistrationRequest;
 import it.unipi.booknetapi.model.user.Role;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserCreateCommand {
@@ -23,14 +24,14 @@ public class UserCreateCommand {
         this.name = adminRegistrationRequest.getName();
         this.username = adminRegistrationRequest.getUsername();
         this.password = adminRegistrationRequest.getPassword();
-        this.role = Role.READER;
+        this.role = Role.Reader;
     }
 
     public UserCreateCommand(UserCreateRequest userCreateRequest) {
         this.name = userCreateRequest.getName();
         this.username = userCreateRequest.getUsername();
         this.password = userCreateRequest.getPassword();
-        this.role = Role.READER;
+        this.role = Role.Reader;
     }
 
 }

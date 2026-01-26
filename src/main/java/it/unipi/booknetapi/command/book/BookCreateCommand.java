@@ -10,17 +10,16 @@ import it.unipi.booknetapi.model.review.ReviewSummary;
 import it.unipi.booknetapi.shared.command.BaseCommand;
 import it.unipi.booknetapi.shared.model.ExternalId;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import java.util.List;
 import java.util.Date;
 
-@Getter
-@Setter
-@Builder
+@Data
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-
 public class BookCreateCommand extends BaseCommand {
 
     private String title;

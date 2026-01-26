@@ -1,7 +1,6 @@
 package it.unipi.booknetapi.service.fetch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import it.unipi.booknetapi.command.book.BookCreateCommand;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.dto.book.*;
 import it.unipi.booknetapi.dto.fetch.ParameterFetch;
@@ -10,24 +9,17 @@ import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
-import it.unipi.booknetapi.model.book.SourceFromEnum;
 import it.unipi.booknetapi.model.fetch.EntityType;
 import it.unipi.booknetapi.model.fetch.ImportLog;
 import it.unipi.booknetapi.model.genre.Genre;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.review.Review;
-import it.unipi.booknetapi.model.review.ReviewSummary;
-import it.unipi.booknetapi.model.user.Reader;
-import it.unipi.booknetapi.model.user.Role;
-import it.unipi.booknetapi.model.user.User;
-import it.unipi.booknetapi.model.user.UserPreference;
+import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
 import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.genre.GenreRepository;
 import it.unipi.booknetapi.repository.review.ReviewRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
-import it.unipi.booknetapi.service.book.BookService;
-import it.unipi.booknetapi.shared.lib.authentication.PasswordGenerator;
 import it.unipi.booknetapi.shared.lib.encryption.EncryptionManager;
 import it.unipi.booknetapi.shared.model.ExternalId;
 import it.unipi.booknetapi.shared.model.Source;
@@ -36,7 +28,6 @@ import net.datafaker.Faker;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -518,39 +509,26 @@ public class ImportService {
         return result;
     }
 
-    private Reader generateUserReaderFromGoodReads(String goodReadsUserId) {
+    private Reviewer generateUserReviewerFromGoodReads(String goodReadsUserId) {
         Faker faker = new Faker();
 
         ExternalId externalId = new ExternalId();
         externalId.setGoodReads(goodReadsUserId);
 
         UserPreference userPreference = new UserPreference();
-        Reader reader = new Reader();
+        Reviewer reader = new Reviewer();
         reader.setExternalId(externalId);
         reader.setName(faker.name().fullName());
-        reader.setUsername(
-                faker.name().firstName().toLowerCase() + "."
-                + faker.name().lastName().toLowerCase() + "@example.com"
-        );
 
-        PasswordGenerator generator = new PasswordGenerator.PasswordGeneratorBuilder()
-                .useLower(true)
-                .useUpper(true)
-                .useDigits(true)
-                .usePunctuation(true)
-                .build();
-        reader.setPassword(encryptionManager.hashPassword(generator.generate(12)));
-
-        reader.setRole(Role.READER);
-        reader.setPreference(userPreference);
+        reader.setRole(Role.Reviewer);
 
         return reader;
     }
 
-    private Map<String, User> findOrGenerateUsers(List<String> externUserIds) {
+    private Map<String, Reviewer> findOrGenerateReviewers(List<String> externUserIds) {
         if(externUserIds.isEmpty()) return new HashMap<>();
 
-        List<User> users = this.userRepository.findByGoodReadsExternIds(externUserIds);
+        List<Reviewer> users = this.userRepository.findByGoodReadsExternIds(externUserIds);
 
         List<String> existingUsersExternIds = users.stream()
                 .filter(u -> u.getExternalId() != null)
@@ -560,13 +538,13 @@ public class ImportService {
         List<String> usersToCreate = new ArrayList<>(externUserIds);
         usersToCreate.removeAll(existingUsersExternIds);
 
-        List<Reader> newUsers = usersToCreate.stream()
-                .map(this::generateUserReaderFromGoodReads)
+        List<Reviewer> newUsers = usersToCreate.stream()
+                .map(this::generateUserReviewerFromGoodReads)
                 .toList();
 
-        List<Reader> insertedUsers = this.userRepository.insert(newUsers).reversed();
+        List<Reviewer> insertedUsers = this.userRepository.insert(newUsers).reversed();
 
-        Map<String, User> mapExternIdUser = users.stream()
+        Map<String, Reviewer> mapExternIdUser = users.stream()
                 .filter(u -> u.getExternalId() != null && u.getExternalId().getGoodReads() != null)
                 .collect(Collectors.toMap(
                         u -> u.getExternalId().getGoodReads(),
@@ -575,7 +553,6 @@ public class ImportService {
         mapExternIdUser.putAll(
                 insertedUsers.stream()
                         .filter(u -> u.getExternalId() != null && u.getExternalId().getGoodReads() != null)
-                        .map(u -> (User) u)
                         .collect(Collectors.toMap(
                                 u -> u.getExternalId().getGoodReads(),
                                 u -> u
@@ -599,7 +576,7 @@ public class ImportService {
                         b -> b
                 ));
 
-        Map<String, User> mapExternIdUser = findOrGenerateUsers(externUserIds);
+        Map<String, Reviewer> mapExternIdUser = findOrGenerateReviewers(externUserIds);
 
         List<Review> reviews = new ArrayList<>(parameterFetch.getData().size());
         for(InteractionGoodReads interactionGoodReads : parameterFetch.getData()) {

@@ -1,7 +1,6 @@
 package it.unipi.booknetapi.shared.lib.authentication;
 
-import it.unipi.booknetapi.model.user.Role;
-import it.unipi.booknetapi.model.user.User;
+import it.unipi.booknetapi.model.user.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -16,10 +15,12 @@ public class UserToken {
 
     public UserToken() {}
 
-    public UserToken(User user) {
+    public UserToken(InternalUser user) {
         this.idUser = user.getId().toHexString();
         this.name = user.getName();
-        this.username = user.getUsername();
+        if(user instanceof Admin) this.username = user.getUsername();
+        else if (user instanceof Reader) this.username = user.getUsername();
+        else this.username = "";
         this.role = user.getRole();
     }
 

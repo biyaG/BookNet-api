@@ -1,18 +1,17 @@
-package it.unipi.booknetapi.command.author;
+package it.unipi.booknetapi.command.user;
 
 import it.unipi.booknetapi.shared.command.BaseCommand;
+import it.unipi.booknetapi.shared.model.PaginationRequest;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-
-import java.util.List;
 
 @Data
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class AuthorIdsDeleteCommand extends BaseCommand {
+public class AdminListCommand extends BaseCommand {
 
-    private List<String> ids;
+    private PaginationRequest pagination;
 
 }

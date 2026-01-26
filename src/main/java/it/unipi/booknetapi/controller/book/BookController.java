@@ -145,7 +145,7 @@ public class BookController {
     ){
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -166,7 +166,7 @@ public class BookController {
     public ResponseEntity<String> deleteBookById(@PathVariable String idBook, @RequestHeader("Authorization") String token){
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN){
+        if(userToken == null || userToken.getRole() != Role.Admin){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -183,7 +183,7 @@ public class BookController {
     @Operation(summary = "Delete Multiple Book")
     public ResponseEntity<String> deleteMultipleBook(@RequestBody List<ObjectId> ids, @RequestHeader("Authorization") String token){
         UserToken userToken = authService.getUserToken(token);
-        if(userToken == null || userToken.getRole() != Role.ADMIN){
+        if(userToken == null || userToken.getRole() != Role.Admin){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -201,7 +201,7 @@ public class BookController {
     @Operation(summary = "Create book")
     public ResponseEntity<BookResponse> createBook(@RequestBody BookCreateRequest request, @RequestHeader("Authorization") String token){
         UserToken userToken = authService.getUserToken(token);
-        if(userToken == null || userToken.getRole() != Role.ADMIN){
+        if(userToken == null || userToken.getRole() != Role.Admin){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 

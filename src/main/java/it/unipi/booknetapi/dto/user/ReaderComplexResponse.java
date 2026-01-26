@@ -19,9 +19,9 @@ public class ReaderComplexResponse extends ReaderResponse {
     public ReaderComplexResponse(User user) {
         super(user);
 
-        if(user instanceof Reader) {
-            if(((Reader) user).getShelf() != null) this.shelf = ((Reader) user).getShelf().stream().map(UserBookShelfResponse::new).toList();
-            if(((Reader) user).getPreference() != null) this.preference = new UserPreferenceResponse(((Reader) user).getPreference());
+        if(user instanceof Reader reader) {
+            if(reader.getShelf() != null) this.shelf = reader.getShelf().stream().map(UserBookShelfResponse::new).toList();
+            if(reader.getPreference() != null) this.preference = new UserPreferenceResponse(reader.getPreference());
         }
     }
 

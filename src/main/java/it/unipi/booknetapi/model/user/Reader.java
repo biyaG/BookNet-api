@@ -2,17 +2,21 @@ package it.unipi.booknetapi.model.user;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 import org.bson.types.ObjectId;
 
 import java.util.List;
 
 @Data
+@SuperBuilder
+@NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-@BsonDiscriminator(value = "reader")
+@BsonDiscriminator(key = "role", value = "Reader")
 public class Reader extends InternalUser {
 
-    private Role role = Role.READER;
+    private Role role = Role.Reader;
 
     private List<ObjectId> reviews;
     private List<UserBookShelf> shelf;

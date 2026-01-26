@@ -30,7 +30,11 @@ public class UserRepository implements UserRepositoryInterface {
     Logger logger = LoggerFactory.getLogger(UserRepository.class);
 
     private final MongoClient mongoClient;
-    private final MongoCollection<User> mongoCollection;
+    private final MongoCollection<User> userCollection;
+    private final MongoCollection<InternalUser> internalUserCollection;
+    private final MongoCollection<Admin> adminCollection;
+    private final MongoCollection<Reader> readerCollection;
+    private final MongoCollection<Reviewer> reviewerCollection;
     private final Neo4jManager neo4jManager;
     private final MeterRegistry registry;
 
@@ -43,7 +47,11 @@ public class UserRepository implements UserRepositoryInterface {
             MeterRegistry registry
     ) {
         this.mongoClient = mongoClient;
-        this.mongoCollection = mongoDatabase.getCollection("users", User.class);
+        this.userCollection = mongoDatabase.getCollection("users", User.class);
+        this.internalUserCollection = mongoDatabase.getCollection("users", InternalUser.class);
+        this.adminCollection = mongoDatabase.getCollection("users", Admin.class);
+        this.readerCollection = mongoDatabase.getCollection("users", Reader.class);
+        this.reviewerCollection = mongoDatabase.getCollection("users", Reviewer.class);
         this.neo4jManager = neo4jManager;
         this.registry = registry;
     }
@@ -58,46 +66,37 @@ public class UserRepository implements UserRepositoryInterface {
     public <T extends User> T insert(T user) {
         Objects.requireNonNull(user);
 
-        logger.debug("Inserting user: {}", user);
+        if(user instanceof InternalUser internalUser) {
+            if(internalUser.getDateAdd() == null) internalUser.setDateAdd(new Date());
+        }
+
+        logger.debug("[REPOSITORY] [USER] [INSERT] user: {}", user);
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
-                boolean success;
-                if(user.getId() == null) {
-                    InsertOneResult insertOneResult = this.mongoCollection
-                            .insertOne(mongoSession, user);
-                    success = insertOneResult.getInsertedId() != null;
-                    if(success) {
-                        user.setId(Objects.requireNonNull(insertOneResult.getInsertedId()).asObjectId().getValue());
-                    }
-                } else {
-                    UpdateResult updateResult = this.mongoCollection
-                            .replaceOne(
-                                    mongoSession,
-                                    Filters.eq("_id", user.getId()),
-                                    user
-                            );
-                    success = updateResult.getModifiedCount() > 0;
-                }
+                user.setId(null);
+                InsertOneResult insertOneResult = this.userCollection
+                        .insertOne(mongoSession, user);
+                if(insertOneResult.getInsertedId() != null) {
+                    user.setId(Objects.requireNonNull(insertOneResult.getInsertedId()).asObjectId().getValue());
 
-                if(success) {
-                    if(user instanceof Reader) {
-                        saveReaderToNeo4j((Reader) user);
+                    if(user.getRole() != null && user.getRole().isAddInNeo4j()) {
+                        saveReaderToNeo4j(user);
                     }
 
                     mongoSession.commitTransaction();
 
-                    logger.info("User inserted successfully: {}", user);
+                    logger.info("[REPOSITORY] [USER] [INSERT MANY] User inserted successfully: {}", user);
                     return user;
                 } else {
                     mongoSession.abortTransaction();
-                    logger.error("Error during insert in mongodb");
+                    logger.error("[REPOSITORY] [USER] [INSERT MANY] Error during insert in mongodb");
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("Error during insert in no4j: {}", e.getMessage());
+                logger.error("[REPOSITORY] [USER] [INSERT MANY] Error during insert in no4j: {}", e.getMessage());
             }
         }
 
@@ -108,17 +107,23 @@ public class UserRepository implements UserRepositoryInterface {
     public <T extends User> T insertWithThread(T user) {
         Objects.requireNonNull(user);
 
-        InsertOneResult insertOneResult = this.mongoCollection.insertOne(user);
-        if(insertOneResult.getInsertedId() != null && user instanceof Reader) {
-            Thread thread = new Thread(() -> saveReaderToNeo4j((Reader) user));
+        if(user instanceof InternalUser internalUser) {
+            if(internalUser.getDateAdd() == null) internalUser.setDateAdd(new Date());
+        }
+
+        logger.debug("[REPOSITORY] [USER] [INSERT] user: {}", user);
+
+        InsertOneResult insertOneResult = this.userCollection.insertOne(user);
+        if(insertOneResult.getInsertedId() != null && user.getRole() != null && user.getRole().isAddInNeo4j()) {
+            Thread thread = new Thread(() -> saveReaderToNeo4j(user));
             thread.start();
         }
 
         return insertOneResult.wasAcknowledged() ? user : null;
     }
 
-    private void saveReaderToNeo4j(Reader reader) {
-        Objects.requireNonNull(reader);
+    private void saveReaderToNeo4j(User user) {
+        Objects.requireNonNull(user);
 
         this.registry.timer("neo4j.ops", "query", "save_reader").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
@@ -128,8 +133,8 @@ public class UserRepository implements UserRepositoryInterface {
                             tx.run(
                                     cypher,
                                     Values.parameters(
-                                            "userId", reader.getId().toHexString(),
-                                            "userName", reader.getName()
+                                            "userId", user.getId().toHexString(),
+                                            "userName", user.getName()
                                     )
                             );
                             return null;
@@ -148,13 +153,13 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(users);
         if(users.isEmpty()) return List.of();
 
-        logger.debug("Inserting many user: {}", users.size());
+        logger.debug("[REPOSITORY] [USER] [INSERT MANY] users size: {}", users.size());
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
             try {
-                this.mongoCollection.insertMany(mongoSession, users);
+                this.userCollection.insertMany(mongoSession, users);
 
                 List<Reader> readers = users.stream()
                         .filter(u -> u instanceof Reader)
@@ -164,12 +169,12 @@ public class UserRepository implements UserRepositoryInterface {
 
                 mongoSession.commitTransaction();
 
-                logger.info("Many User inserted successfully: {}", users.size());
+                logger.info("[REPOSITORY] [USER] [INSERT MANY] Many User inserted successfully: {}", users.size());
 
                 return users;
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("Error during insert in no4j: {}", e.getMessage());
+                logger.error("[REPOSITORY] [USER] [INSERT MANY] Error during insert in no4j: {}", e.getMessage());
             }
         }
 
@@ -216,7 +221,7 @@ public class UserRepository implements UserRepositoryInterface {
             mongoSession.startTransaction();
 
             try {
-                UpdateResult updateResult = this.mongoCollection
+                UpdateResult updateResult = this.userCollection
                         .updateOne(
                                 mongoSession,
                                 Filters.eq("_id", new ObjectId(idUser)),
@@ -266,7 +271,7 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newRole);
 
-        UpdateResult updateResult = this.mongoCollection
+        UpdateResult updateResult = this.userCollection
                 .updateOne(
                         Filters.eq("_id", new ObjectId(idUser)),
                         Updates.set("role", newRole)
@@ -286,7 +291,7 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newPassword);
 
-        UpdateResult updateResult = this.mongoCollection
+        UpdateResult updateResult = this.userCollection
                 .updateOne(
                         Filters.eq("_id", new ObjectId(idUser)),
                         Updates.set("password", newPassword)
@@ -305,7 +310,7 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newImageUrl);
 
-        UpdateResult updateResult = this.mongoCollection
+        UpdateResult updateResult = this.userCollection
                 .updateOne(
                         Filters.eq("_id", new ObjectId(idUser)),
                         Updates.set("imageUrl", newImageUrl)
@@ -324,7 +329,7 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(preference);
 
-        UpdateResult updateResult = this.mongoCollection
+        UpdateResult updateResult = this.userCollection
                 .updateOne(
                         Filters.eq("_id", new ObjectId(idUser)),
                         Updates.set("preference", preference)
@@ -423,7 +428,7 @@ public class UserRepository implements UserRepositoryInterface {
             mongoSession.startTransaction();
 
             try {
-                UpdateResult updateResult = this.mongoCollection
+                UpdateResult updateResult = this.userCollection
                         .updateOne(
                                 Filters.eq("_id", new ObjectId(idUser)),
                                 Updates.set("shelf", shelf)
@@ -512,7 +517,7 @@ public class UserRepository implements UserRepositoryInterface {
             mongoSession.startTransaction();
 
             try {
-                UpdateResult updateResult = this.mongoCollection
+                UpdateResult updateResult = this.userCollection
                         .updateOne(
                                 Filters.eq("_id", new ObjectId(idUser)),
                                 Updates.push("shelf", bookShelf)
@@ -590,7 +595,7 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idBook);
         if(!ObjectId.isValid(idUser) || !ObjectId.isValid(idBook)) return false;
 
-        UpdateResult updateResult = this.mongoCollection.updateOne(
+        UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idUser)),
                 Updates.pull("shelf", Filters.eq("id", new ObjectId(idBook)))
         );
@@ -633,7 +638,7 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(review.getUser());
         Objects.requireNonNull(review.getUser().getId());
 
-        UpdateResult updateResult = this.mongoCollection.updateOne(
+        UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.eq("_id", review.getUser().getId()),
                 Updates.push("reviews", review.getId())
         );
@@ -684,7 +689,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         if(!ObjectId.isValid(idUser) || !ObjectId.isValid(idBook) || !ObjectId.isValid(idReview)) return false;
 
-        UpdateResult updateResult = this.mongoCollection.updateOne(
+        UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.and(
                     Filters.eq("_id", new ObjectId(idUser)),
                     Filters.elemMatch("reviews", Filters.eq("$id", new ObjectId(idReview)))
@@ -731,7 +736,7 @@ public class UserRepository implements UserRepositoryInterface {
             mongoSession.startTransaction();
 
             try {
-                DeleteResult deleteResult = this.mongoCollection
+                DeleteResult deleteResult = this.userCollection
                         .deleteOne(Filters.eq("_id", new ObjectId(idUser)));
                 if(deleteResult.getDeletedCount() > 0) {
                     deleteUserFromNeo4j(idUser);
@@ -786,7 +791,7 @@ public class UserRepository implements UserRepositoryInterface {
             mongoSession.startTransaction();
 
             try {
-                DeleteResult deleteResult = this.mongoCollection
+                DeleteResult deleteResult = this.userCollection
                         .deleteMany(
                                 Filters.in("_id", ids.stream().map(ObjectId::new).toList())
                         );
@@ -838,7 +843,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         if(!ObjectId.isValid(idUser)) return Optional.empty();
 
-        User user = this.mongoCollection
+        User user = this.userCollection
                 .find(Filters.eq("_id", new ObjectId(idUser)))
                 .first();
 
@@ -850,10 +855,10 @@ public class UserRepository implements UserRepositoryInterface {
      * @return a user associated with the given username or empty if not found
      */
     @Override
-    public Optional<User> findByUsername(String username) {
+    public Optional<InternalUser> findByUsername(String username) {
         Objects.requireNonNull(username);
 
-        User user = this.mongoCollection
+        InternalUser user = this.internalUserCollection
                 .find(Filters.eq("username", username))
                 .first();
 
@@ -867,14 +872,71 @@ public class UserRepository implements UserRepositoryInterface {
     public PageResult<User> findAll(int page, int size) {
         int skip = page * size;
 
-        List<User> users = this.mongoCollection
+        List<User> users = this.userCollection
                 .find()
                 .skip(skip)
                 .limit(size)
                 .into(new ArrayList<>());
 
-        long total = this.mongoCollection
+        long total = this.userCollection
                 .countDocuments();
+
+        return new PageResult<>(users, total, page, size);
+    }
+
+    /**
+     * @return list of all users with role ADMIN with pagination
+     */
+    @Override
+    public PageResult<Admin> findAllAdmin(int page, int size) {
+        int skip = page * size;
+
+        List<Admin> users = this.adminCollection
+                .find(Filters.eq("role", Role.Admin))
+                .skip(skip)
+                .limit(size)
+                .into(new ArrayList<>());
+
+        long total = this.userCollection
+                .countDocuments(Filters.eq("role", Role.Admin));
+
+        return new PageResult<>(users, total, page, size);
+    }
+
+    /**
+     * @return list of all users with role READER with pagination
+     */
+    @Override
+    public PageResult<Reader> findAllReader(int page, int size) {
+        int skip = page * size;
+
+        List<Reader> users = this.readerCollection
+                .find(Filters.eq("role", Role.Reader))
+                .skip(skip)
+                .limit(size)
+                .into(new ArrayList<>());
+
+        long total = this.userCollection
+                .countDocuments(Filters.eq("role", Role.Reader));
+
+        return new PageResult<>(users, total, page, size);
+    }
+
+    /**
+     * @return list of all users with role REVIEWER with pagination
+     */
+    @Override
+    public PageResult<Reviewer> findAllReviewer(int page, int size) {
+        int skip = page * size;
+
+        List<Reviewer> users = this.reviewerCollection
+                .find(Filters.eq("role", Role.Reviewer))
+                .skip(skip)
+                .limit(size)
+                .into(new ArrayList<>());
+
+        long total = this.userCollection
+                .countDocuments(Filters.eq("role", Role.Reviewer));
 
         return new PageResult<>(users, total, page, size);
     }
@@ -884,17 +946,15 @@ public class UserRepository implements UserRepositoryInterface {
      * @return list of user associate at these ids
      */
     @Override
-    public List<User> findByGoodReadsExternIds(List<String> externUserIds) {
+    public List<Reviewer> findByGoodReadsExternIds(List<String> externUserIds) {
         Objects.requireNonNull(externUserIds);
 
         if(externUserIds.isEmpty()) return List.of();
 
         logger.debug("[REPOSITORY] [USER] [FIND] [BY EXTERN IDS] ids: {}", externUserIds);
 
-        List<User> users = this.mongoCollection
+        return this.reviewerCollection
                 .find(Filters.in("externalId.goodReads", externUserIds))
                 .into(new ArrayList<>());
-
-        return users;
     }
 }

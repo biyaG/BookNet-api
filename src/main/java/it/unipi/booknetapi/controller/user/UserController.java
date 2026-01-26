@@ -1,12 +1,19 @@
 package it.unipi.booknetapi.controller.user;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.review.ReviewByReaderListCommand;
+import it.unipi.booknetapi.command.user.AdminListCommand;
+import it.unipi.booknetapi.command.user.ReaderListCommand;
+import it.unipi.booknetapi.command.user.ReviewerListCommand;
+import it.unipi.booknetapi.command.user.UserGetCommand;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
-import it.unipi.booknetapi.dto.user.ReaderComplexResponse;
-import it.unipi.booknetapi.dto.user.UserResponse;
+import it.unipi.booknetapi.dto.user.*;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.review.ReviewService;
@@ -38,7 +45,91 @@ public class UserController {
     }
 
 
-    @GetMapping
+    @GetMapping("/admin")
+    @Operation(summary = "Get list of admin")
+    public ResponseEntity<PageResult<AdminResponse>> getAdminUser(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null  || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        PaginationRequest paginationRequest = PaginationRequest.builder()
+                .page(page != null ? page : 0)
+                .size(size != null ? size : 100)
+                .build();
+
+        AdminListCommand command = AdminListCommand.builder()
+                .pagination(paginationRequest)
+                .build();
+        command.setUserToken(userToken);
+
+        PageResult<AdminResponse> response = this.userService.list(command);
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/reader")
+    @Operation(summary = "Get list of reader")
+    public ResponseEntity<PageResult<ReaderResponse>> getReaderUser(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null  || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        PaginationRequest paginationRequest = PaginationRequest.builder()
+                .page(page != null ? page : 0)
+                .size(size != null ? size : 100)
+                .build();
+
+        ReaderListCommand command = ReaderListCommand.builder()
+                .pagination(paginationRequest)
+                .build();
+        command.setUserToken(userToken);
+
+        PageResult<ReaderResponse> response = this.userService.list(command);
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/reviewer")
+    @Operation(summary = "Get list of reviewer")
+    public ResponseEntity<PageResult<ReviewerResponse>> getReviewerUser(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null  || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        PaginationRequest paginationRequest = PaginationRequest.builder()
+                .page(page != null ? page : 0)
+                .size(size != null ? size : 100)
+                .build();
+
+        ReviewerListCommand command = ReviewerListCommand.builder()
+                .pagination(paginationRequest)
+                .build();
+        command.setUserToken(userToken);
+
+        PageResult<ReviewerResponse> response = this.userService.list(command);
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/me")
     @Operation(summary = "Get Current User Data")
     public ResponseEntity<UserResponse> getCurrentUser(@RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
@@ -47,21 +138,43 @@ public class UserController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        if(userToken.getRole() == Role.ADMIN) {
-            return ResponseEntity.ok(userService.getUserById(userToken.getIdUser()));
-        }
+        UserGetCommand command = UserGetCommand.builder()
+                .id(userToken.getIdUser())
+                .userToken(userToken)
+                .build();
 
-        // return ResponseEntity.ok(userService.getReaderById(userToken.getIdUser()));
-        return ResponseEntity.ok(userService.getUserById(userToken.getIdUser()));
+        UserResponse userResponse = this.userService.get(command);
+
+        if(userResponse == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        return ResponseEntity.ok(userResponse);
     }
 
     @GetMapping("/{idUser}")
     @Operation(summary = "Get user information")
     @SecurityRequirements(value = {})
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Successful operation",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(oneOf = {
+                                    AdminResponse.class,
+                                    ReaderResponse.class,
+                                    ReviewerResponse.class,
+                                    UserResponse.class
+                            })
+                    )
+            ),
+            @ApiResponse(responseCode = "404", description = "User not found", content = @Content)
+    })
     public ResponseEntity<UserResponse> getUserById(@PathVariable String idUser) {
-        UserResponse user = userService.getUserById(idUser);
-        if(user == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-        return ResponseEntity.ok(user);
+        UserGetCommand command = UserGetCommand.builder()
+                .id(idUser)
+                .build();
+
+        UserResponse userResponse = this.userService.get(command);
+
+        if(userResponse == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        return ResponseEntity.ok(userResponse);
     }
 
 

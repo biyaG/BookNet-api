@@ -49,7 +49,7 @@ public class AuthService {
         admin.setName(registrationRequest.getName());
         admin.setUsername(registrationRequest.getUsername());
         admin.setPassword(encryptionManager.hashPassword(registrationRequest.getPassword()));
-        admin.setRole(Role.ADMIN);
+        admin.setRole(Role.Admin);
         return new UserResponse(userRepository.insertWithThread(admin));
     }
 
@@ -83,16 +83,16 @@ public class AuthService {
         reader.setName(registrationRequest.getName());
         reader.setUsername(registrationRequest.getUsername());
         reader.setPassword(encryptionManager.hashPassword(registrationRequest.getPassword()));
-        reader.setRole(Role.READER);
+        reader.setRole(Role.Reader);
         reader.setPreference(userPreference);
         return new UserResponse(userRepository.insertWithThread(reader));
     }
 
 
     public String login(UserLoginRequest loginRequest) {
-        User user = userRepository.findByUsername(loginRequest.getUsername())
+        InternalUser user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElse(null);
-        if (user == null) {
+        if (user == null || user.getPassword() == null) {
             return null;
         }
 
@@ -104,7 +104,7 @@ public class AuthService {
     }
 
     public String loginAlt(UserLoginRequest loginRequest) {
-        User user = userRepository.findByUsername(loginRequest.getUsername())
+        InternalUser user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElse(null);
         if (user == null) {
             return null;

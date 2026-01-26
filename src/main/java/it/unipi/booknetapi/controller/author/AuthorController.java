@@ -77,7 +77,7 @@ public class AuthorController {
     public ResponseEntity<String> migrateAuthor(@RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -102,7 +102,7 @@ public class AuthorController {
     public ResponseEntity<String> deleteAuthorById(@PathVariable String idAuthor, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -121,7 +121,7 @@ public class AuthorController {
     public ResponseEntity<String> deleteMultiAuthors(@RequestBody List<String> ids, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -140,7 +140,7 @@ public class AuthorController {
     public ResponseEntity<AuthorResponse> createAuthor(@RequestBody AuthorCreateRequest request, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.ADMIN) {
+        if(userToken == null || userToken.getRole() != Role.Admin) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
