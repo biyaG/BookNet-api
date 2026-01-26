@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.author.*;
+import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.dto.author.AuthorCreateRequest;
 import it.unipi.booknetapi.dto.author.AuthorResponse;
 import it.unipi.booknetapi.dto.author.AuthorSimpleResponse;
@@ -54,12 +55,19 @@ public class AuthorController {
     @Operation(summary = "Import author", description = "Uploads a file containing authors in NDJSON format.")
     public ResponseEntity<String> importAuthors(
             @PathVariable String idSource,
+            @RequestHeader("Authorization") String token,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
             )
             @RequestParam("file") MultipartFile file
     ) {
+        UserToken userToken = this.authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body("File is empty");
         }
@@ -68,7 +76,14 @@ public class AuthorController {
 
         if(source == null) return ResponseEntity.badRequest().body("Invalid source");
 
-        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.AUTHOR, file));
+        ImportDataCommand command = ImportDataCommand.builder()
+                .source(source)
+                .importEntityType(ImportEntityType.AUTHOR)
+                .file(file)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.importService.importData(command));
     }
 
 
@@ -108,8 +123,8 @@ public class AuthorController {
 
         AuthorDeleteCommand command = AuthorDeleteCommand.builder()
                 .id(idAuthor)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         boolean result = this.authorService.deleteAuthor(command);
 
@@ -127,8 +142,8 @@ public class AuthorController {
 
         AuthorIdsDeleteCommand command = AuthorIdsDeleteCommand.builder()
                 .ids(ids)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         boolean result = this.authorService.deleteMultiAuthors(command);
 

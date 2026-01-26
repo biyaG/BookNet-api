@@ -1,9 +1,11 @@
 package it.unipi.booknetapi.repository.user;
 
 import it.unipi.booknetapi.model.book.BookEmbed;
+import it.unipi.booknetapi.model.notification.NotificationEmbed;
 import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.types.ObjectId;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +28,10 @@ public interface UserRepositoryInterface {
 
     boolean addReview(Review review);
     boolean deleteReview(String idUser, String idBook, String idReview);
+
+    boolean addNotification(String idUser, NotificationEmbed notification);
+    boolean deleteNotification(String idUser, String idNotification);
+    boolean deleteNotification(String idUser, List<String> idNotification);
 
     boolean delete(String idUser);
     boolean deleteAll(List<String> idUsers);

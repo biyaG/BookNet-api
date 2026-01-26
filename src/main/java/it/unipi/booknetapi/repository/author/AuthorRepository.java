@@ -10,7 +10,6 @@ import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
-import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
@@ -38,7 +37,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     private final MongoCollection<Author> mongoCollection;
     private final Neo4jManager neo4jManager;
     private final MeterRegistry registry;
-    private final CacheService cacheService;
 
     private static final String CACHE_PREFIX = "author:";
     private static final int CACHE_TTL = 3600; // 1 hour
@@ -48,38 +46,15 @@ public class AuthorRepository implements AuthorRepositoryInterface {
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
-            MeterRegistry registry,
-            CacheService cacheService
+            MeterRegistry registry
     ) {
         this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 100;
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("authors", Author.class);
         this.neo4jManager = neo4jManager;
         this.registry = registry;
-        this.cacheService = cacheService;
     }
 
-
-    private static String generateCacheKey(String idAuthor) {
-        return CACHE_PREFIX + idAuthor;
-    }
-
-    private void cacheAuthor(Author author) {
-        this.cacheService.save(generateCacheKey(author.getId().toHexString()), author, CACHE_TTL);
-    }
-
-    private void deleteCache(String idAuthor) {
-        this.cacheService.delete(generateCacheKey(idAuthor));
-    }
-
-    private void deleteCache(List<String> idAuthors) {
-        idAuthors.forEach(this::deleteCache);
-    }
-
-    private void deleteCacheInThread(List<String> idAuthors) {
-        Thread thread = new Thread(() -> deleteCache(idAuthors));
-        thread.start();
-    }
 
     /**
      * @param author the author to insert
@@ -100,7 +75,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 if(insertOneResult.getInsertedId() != null) {
                     mongoSession.commitTransaction();
                     saveAuthorToNeo4j(author);
-                    cacheAuthor(author);
                     return author;
                 } else {
                     mongoSession.abortTransaction();
@@ -323,8 +297,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         Updates.set("description", newDescription)
                 );
 
-        deleteCache(idAuthor);
-
         return updateResult.getModifiedCount() > 0;
     }
 
@@ -342,8 +314,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         Filters.eq("_id", new ObjectId(idAuthor)),
                         Updates.set("imageUrl", newImageUrl)
                 );
-
-        deleteCache(idAuthor);
 
         return updateResult.getModifiedCount() > 0;
     }
@@ -368,8 +338,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         Updates.set("books", books)
                 );
 
-        deleteCache(idAuthor);
-
         return result.getModifiedCount() > 0;
     }
 
@@ -392,8 +360,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                         Filters.eq("_id", new ObjectId(idAuthor)),
                         Updates.push("books", book)
                 );
-
-        deleteCache(idAuthor);
 
         return result.getModifiedCount() > 0;
     }
@@ -418,8 +384,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 Updates.pull("books", new Document("id", new ObjectId(idBook)))
         );
 
-        deleteCache(idAuthor);
-
         return result.getModifiedCount() > 0;
     }
 
@@ -442,7 +406,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 if(deleteResult.getDeletedCount() > 0) {
                     deleteAuthorFromNeo4j(idAuthor);
                     mongoSession.commitTransaction();
-                    deleteCache(idAuthor);
                     return true;
                 } else {
                     mongoSession.abortTransaction();
@@ -501,7 +464,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 if(deleteResult.getDeletedCount() > 0) {
                     deleteAuthorsFromNeo4j(ids);
                     mongoSession.commitTransaction();
-                    deleteCacheInThread(idAuthors);
                     return true;
                 } else {
                     mongoSession.abortTransaction();
@@ -549,11 +511,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         logger.debug("[REPOSITORY] [AUTHOR] [FIND] [BY ID] id: {}", idAuthor);
 
-        try {
-            Author author = this.cacheService.get(generateCacheKey(idAuthor), Author.class);
-            if(author != null) return Optional.of(author);
-        } catch (Exception ignored) {}
-
         Author author = this.mongoCollection
                 .find(Filters.eq("_id", new ObjectId(idAuthor)))
                 .first();
@@ -562,25 +519,26 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     }
 
     @Override
-    public List<AuthorEmbed> findAllById(List<String> authorIds) {
+    public List<Author> findAllById(List<String> authorIds) {
 
         if (authorIds == null || authorIds.isEmpty()) {
             return new ArrayList<>();
         }
 
         List<ObjectId> objectIds = authorIds.stream()
+                .filter(ObjectId::isValid)
                 .map(ObjectId::new)
                 .toList();
 
-        List<AuthorEmbed> authors = new ArrayList<>();
+        if(objectIds.isEmpty()) return new ArrayList<>();
 
-        mongoCollection
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND BY IDS] author ids size: {}", objectIds.size());
+
+        return mongoCollection
                 .find(Filters.in("_id", objectIds))
-                .forEach(author -> authors.add(new AuthorEmbed(author)
-                ));
-
-        return authors;
+                .into(new ArrayList<>());
     }
+
     /**
      * @return list of all authors with pagination
      */

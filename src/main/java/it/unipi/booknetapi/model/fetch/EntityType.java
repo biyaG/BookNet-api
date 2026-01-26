@@ -7,10 +7,12 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum EntityType {
 
-    BOOK("BOOK")
-    , AUTHOR("AUTHOR")
-    , GENRE("GENRE")
+    AUTHOR("AUTHOR")
+    , BOOK("BOOK")
     , BOOK_GENRE("BOOK_GENRE")
+    , GENRE("GENRE")
+    , IMPORT_LOG("IMPORT_LOG")
+    , NOTIFICATION("NOTIFICATION")
     , REVIEW("REVIEW")
     , USER("USER")
 

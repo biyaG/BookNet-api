@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.service.fetch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.dto.book.*;
 import it.unipi.booknetapi.dto.fetch.ParameterFetch;
@@ -13,14 +14,16 @@ import it.unipi.booknetapi.model.fetch.EntityType;
 import it.unipi.booknetapi.model.fetch.ImportLog;
 import it.unipi.booknetapi.model.genre.Genre;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
+import it.unipi.booknetapi.model.notification.Notification;
+import it.unipi.booknetapi.model.notification.NotificationEmbed;
 import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
 import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.genre.GenreRepository;
+import it.unipi.booknetapi.repository.notification.NotificationRepository;
 import it.unipi.booknetapi.repository.review.ReviewRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
-import it.unipi.booknetapi.shared.lib.encryption.EncryptionManager;
 import it.unipi.booknetapi.shared.model.ExternalId;
 import it.unipi.booknetapi.shared.model.Source;
 import it.unipi.booknetapi.repository.fetch.ImportLogRepository;
@@ -47,9 +50,10 @@ public class ImportService {
     private final AuthorRepository authorRepository;
     private final BookRepository bookRepository;
     private final GenreRepository genreRepository;
+    private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final ReviewRepository reviewRepository;
-    private final EncryptionManager encryptionManager;
+
     private final ObjectMapper objectMapper;
 
     public ImportService(
@@ -57,44 +61,46 @@ public class ImportService {
             AuthorRepository authorRepository,
             BookRepository bookRepository,
             GenreRepository genreRepository,
+            NotificationRepository notificationRepository,
             UserRepository userRepository,
-            ReviewRepository reviewRepository,
-            EncryptionManager encryptionManager
+            ReviewRepository reviewRepository
     ) {
         this.importLogRepository = importLogRepository;
         this.authorRepository = authorRepository;
         this.bookRepository = bookRepository;
         this.genreRepository = genreRepository;
+        this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
         this.reviewRepository = reviewRepository;
-
-        this.encryptionManager = encryptionManager;
 
         this.objectMapper = new ObjectMapper();
     }
 
 
-    public String importData(Source source, ImportEntityType importEntityType, MultipartFile file) {
-        if(file.isEmpty()) return "File is empty";
+    public String importData(ImportDataCommand command) {
+        if(command == null || !command.isValid()) return "Invalid command";
+
+        if(command.getFile().isEmpty()) return "File is empty";
 
         String fileUrl;
         try {
-            fileUrl = file.getResource().getURI().toString();
+            fileUrl = command.getFile().getResource().getURI().toString();
         } catch (Exception e) {
-            fileUrl = file.getOriginalFilename();
+            fileUrl = command.getFile().getOriginalFilename();
         }
         // String finalFileUrl = fileUrl;
-        String fileName = file.getOriginalFilename();
-        String fileContentType = file.getContentType();
+        String fileName = command.getFile().getOriginalFilename();
+        String fileContentType = command.getFile().getContentType();
 
-        switch (source) {
+        switch (command.getSource()) {
             case GOOD_READS -> {
-                switch (importEntityType) {
+                switch (command.getImportEntityType()) {
                     case BOOK -> {
-                        List<BookGoodReads> books = extractDataFromFile(source, file, BookGoodReads.class);
+                        List<BookGoodReads> books = extractDataFromFile(command.getSource(), command.getFile(), BookGoodReads.class);
 
                         ParameterFetch<BookGoodReads> parameterFetch = ParameterFetch.<BookGoodReads>builder()
-                                .source(source)
+                                .idUser(command.getUserToken().getIdUser())
+                                .source(command.getSource())
                                 .entityType(EntityType.BOOK)
                                 .fileUrl(fileUrl)
                                 .fileName(fileName)
@@ -107,10 +113,11 @@ public class ImportService {
                         return "Successfully processed import books.";
                     }
                     case AUTHOR -> {
-                        List<AuthorGoodReads> authors = extractDataFromFile(source, file, AuthorGoodReads.class);
+                        List<AuthorGoodReads> authors = extractDataFromFile(command.getSource(), command.getFile(), AuthorGoodReads.class);
 
                         ParameterFetch<AuthorGoodReads> parameterFetch = ParameterFetch.<AuthorGoodReads>builder()
-                                .source(source)
+                                .idUser(command.getUserToken().getIdUser())
+                                .source(command.getSource())
                                 .entityType(EntityType.AUTHOR)
                                 .fileUrl(fileUrl)
                                 .fileName(fileName)
@@ -123,11 +130,12 @@ public class ImportService {
                     }
                     case BOOK_GENRE -> {
 
-                        List<BookGenreGoodReads> bookGenres = extractDataFromFile(source, file, BookGenreGoodReads.class);
+                        List<BookGenreGoodReads> bookGenres = extractDataFromFile(command.getSource(), command.getFile(), BookGenreGoodReads.class);
                         if(bookGenres == null) return "Error during read file";
 
                         ParameterFetch<BookGenreGoodReads> parameterFetch = ParameterFetch.<BookGenreGoodReads>builder()
-                                .source(source)
+                                .idUser(command.getUserToken().getIdUser())
+                                .source(command.getSource())
                                 .entityType(EntityType.GENRE)
                                 .fileUrl(fileUrl)
                                 .fileName(fileName)
@@ -140,12 +148,13 @@ public class ImportService {
                     }
 
                     case BOOK_SIMILARITY -> {
-                        List<BookGoodReads> bookSimilarity = extractDataFromFile(source, file, BookGoodReads.class);
+                        List<BookGoodReads> bookSimilarity = extractDataFromFile(command.getSource(), command.getFile(), BookGoodReads.class);
                         if(bookSimilarity == null) return "Error during read file";
 
                         // 1. Create the parameter fetch with the correct type
                         ParameterFetch<BookGoodReads> parameterFetch = ParameterFetch.<BookGoodReads>builder()
-                                .source(source)
+                                .idUser(command.getUserToken().getIdUser())
+                                .source(command.getSource())
                                 .entityType(EntityType.BOOK)
                                 .fileUrl(fileUrl)
                                 .fileName(fileName)
@@ -160,11 +169,12 @@ public class ImportService {
                     }
 
                     case REVIEW -> {
-                        List<InteractionGoodReads> interactionGoodReads =  extractDataFromFile(source, file, InteractionGoodReads.class);
+                        List<InteractionGoodReads> interactionGoodReads =  extractDataFromFile(command.getSource(), command.getFile(), InteractionGoodReads.class);
                         if(interactionGoodReads == null) return "Error during read file";
 
                         ParameterFetch<InteractionGoodReads> parameterFetch = ParameterFetch.<InteractionGoodReads>builder()
-                                .source(source)
+                                .idUser(command.getUserToken().getIdUser())
+                                .source(command.getSource())
                                 .entityType(EntityType.REVIEW)
                                 .fileUrl(fileUrl)
                                 .fileName(fileName)
@@ -259,6 +269,24 @@ public class ImportService {
                 .fileUrl(parameterFetch.getFileUrl())
                 .build();
         importLogRepository.insert(importLog);
+
+        try {
+            if(parameterFetch.getIdUser() != null) {
+                Notification newNotification = Notification.builder()
+                        .title("Import " + parameterFetch.getEntityType() + " from " + parameterFetch.getSource())
+                        .message(message)
+                        .userId(new ObjectId(parameterFetch.getIdUser()))
+                        .entityId(importLog.getId())
+                        .entityType(EntityType.IMPORT_LOG)
+                        .createdAt(new Date())
+                        .read(false)
+                        .build();
+                Notification notification = this.notificationRepository.insert(newNotification);
+                if(notification != null) {
+                    this.userRepository.addNotification(parameterFetch.getIdUser(), new NotificationEmbed(notification));
+                }
+            }
+        } catch (Exception ignored) {}
     }
 
     private void importGoodReadsBooks(ParameterFetch<BookGoodReads> parameterFetch) {

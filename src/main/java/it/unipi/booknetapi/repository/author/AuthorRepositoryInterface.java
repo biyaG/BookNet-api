@@ -28,7 +28,7 @@ public interface AuthorRepositoryInterface {
     boolean delete(List<String> idAuthors);
 
     Optional<Author> findById(String idAuthor);
-    List<AuthorEmbed> findAllById(List<String> idAuthor);
+    List<Author> findAllById(List<String> idAuthor);
 
     PageResult<Author> findAll(int page, int size);
     PageResult<Author> search(String name, int page, int size);

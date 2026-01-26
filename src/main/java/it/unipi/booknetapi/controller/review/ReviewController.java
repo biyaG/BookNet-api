@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.review.ReviewDeleteCommand;
 import it.unipi.booknetapi.command.review.ReviewGetCommand;
 import it.unipi.booknetapi.command.review.ReviewIdsDeleteCommand;
@@ -55,12 +56,19 @@ public class ReviewController {
     @Operation(summary = "Import reviews", description = "Uploads a file containing reviews in NDJSON format.")
     public ResponseEntity<String> importAuthorsFromGoodreads(
             @PathVariable String idSource,
+            @RequestHeader("Authorization") String token,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
             )
             @RequestParam("file") MultipartFile file
     ) {
+        UserToken userToken = this.authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body("File is empty");
         }
@@ -69,7 +77,14 @@ public class ReviewController {
 
         if(source == null) return ResponseEntity.badRequest().body("Invalid source");
 
-        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.REVIEW, file));
+        ImportDataCommand command = ImportDataCommand.builder()
+                .source(source)
+                .importEntityType(ImportEntityType.REVIEW)
+                .file(file)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.importService.importData(command));
     }
 
     @GetMapping("/{idReview}")

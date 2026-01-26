@@ -13,6 +13,8 @@ import java.util.List;
 @AllArgsConstructor
 public class ParameterFetch<T> {
 
+    private String idUser;
+
     private Source source;
     private EntityType entityType;
     private String fileUrl;

@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.book.*;
+import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
 import it.unipi.booknetapi.command.review.ReviewCreateCommand;
 import it.unipi.booknetapi.dto.book.BookCreateRequest;
@@ -66,12 +67,19 @@ public class BookController {
     @Operation(summary = "Import book", description= "Uploads a file containing books in NDJSON format.")
     public ResponseEntity<String> importBooks(
             @PathVariable String idSource,
+            @RequestHeader("Authorization") String token,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
             )
             @RequestParam("file") MultipartFile file
-            ){
+    ){
+        UserToken userToken = this.authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         if(file.isEmpty()){
             return ResponseEntity.badRequest().body("File is empty");
         }
@@ -80,19 +88,33 @@ public class BookController {
 
         if(source == null) return ResponseEntity.badRequest().body("Invalid source");
 
-        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.BOOK,file));
+        ImportDataCommand command = ImportDataCommand.builder()
+                .source(source)
+                .importEntityType(ImportEntityType.BOOK)
+                .file(file)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.importService.importData(command));
     }
 
     @PostMapping(value = "upload/similarity/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Import book", description= "Uploads a file containing books in NDJSON format.")
     public ResponseEntity<String> importBooksSimilarity(
             @PathVariable String idSource,
+            @RequestHeader("Authorization") String token,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
             )
             @RequestParam("file") MultipartFile file
-            ){
+    ){
+        UserToken userToken = this.authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         if(file.isEmpty()){
             return ResponseEntity.badRequest().body("File is empty");
         }
@@ -101,7 +123,14 @@ public class BookController {
 
         if(source == null) return ResponseEntity.badRequest().body("Invalid source");
 
-        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.BOOK_SIMILARITY,file));
+        ImportDataCommand command = ImportDataCommand.builder()
+                .source(source)
+                .importEntityType(ImportEntityType.BOOK_SIMILARITY)
+                .file(file)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.importService.importData(command));
     }
 
     @GetMapping("/{idBook}")

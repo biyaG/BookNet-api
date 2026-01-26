@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.genre.*;
 import it.unipi.booknetapi.dto.genre.GenreCreateRequest;
 import it.unipi.booknetapi.dto.genre.GenreResponse;
@@ -53,12 +54,19 @@ public class GenreController {
     @Operation(summary = "Import genre", description = "Uploads a file containing genres in NDJSON format.")
     public ResponseEntity<String> importGenres(
             @PathVariable String idSource,
+            @RequestHeader("Authorization") String token,
             @Parameter(
                     description = "The NDJSON file to upload",
                     content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
             )
             @RequestParam("file") MultipartFile file
     ) {
+        UserToken userToken = this.authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body("File is empty");
         }
@@ -67,7 +75,14 @@ public class GenreController {
 
         if(source == null) return ResponseEntity.badRequest().body("Invalid source");
 
-        return ResponseEntity.ok(this.importService.importData(source, ImportEntityType.BOOK_GENRE, file));
+        ImportDataCommand command = ImportDataCommand.builder()
+                .source(source)
+                .importEntityType(ImportEntityType.BOOK_GENRE)
+                .file(file)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.importService.importData(command));
     }
 
 

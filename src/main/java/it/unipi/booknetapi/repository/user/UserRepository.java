@@ -5,16 +5,19 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.PushOptions;
 import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.model.book.BookEmbed;
+import it.unipi.booknetapi.model.notification.NotificationEmbed;
 import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.shared.lib.database.*;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Values;
@@ -28,6 +31,8 @@ import java.util.*;
 public class UserRepository implements UserRepositoryInterface {
 
     Logger logger = LoggerFactory.getLogger(UserRepository.class);
+
+    private static final int MAX_LAST_NOTIFICATIONS = 10;
 
     private final MongoClient mongoClient;
     private final MongoCollection<User> userCollection;
@@ -721,6 +726,96 @@ public class UserRepository implements UserRepositoryInterface {
                 });
             }
         });
+    }
+
+    /**
+     * @param notification
+     * @return
+     */
+    @Override
+    public boolean addNotification(String idUser, NotificationEmbed notification) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(notification);
+
+        ObjectId oidUser = new ObjectId(idUser);
+
+        Bson update = Updates.combine(
+                Updates.push("notifications", notification.getId()),
+
+                Updates.pushEach("lastNotifications",
+                        List.of(notification),
+                        new PushOptions()
+                                .position(0)
+                                .slice(MAX_LAST_NOTIFICATIONS)
+                )
+        );
+
+        UpdateResult result = this.userCollection.updateOne(Filters.eq("_id", oidUser), update);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
+     * @param idUser
+     * @param idNotification
+     * @return
+     */
+    @Override
+    public boolean deleteNotification(String idUser, String idNotification) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(idNotification);
+
+        if(!ObjectId.isValid(idUser) ||  !ObjectId.isValid(idNotification)) return false;
+        ObjectId oidUser = new ObjectId(idUser);
+        ObjectId oidNotification = new ObjectId(idNotification);
+
+        Bson update = Updates.combine(
+                Updates.pull("notifications", oidNotification),
+
+                Updates.pull("lastNotifications", Filters.eq("id", oidNotification))
+        );
+
+        UpdateResult result = this.userCollection.updateOne(Filters.eq("_id", oidUser), update);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
+     * @param idUser
+     * @param idNotification
+     * @return
+     */
+    @Override
+    public boolean deleteNotification(String idUser, List<String> idNotification) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(idNotification);
+
+        if (idNotification.isEmpty()) return false;
+
+        try {
+            ObjectId userObjectId = new ObjectId(idUser);
+
+            List<ObjectId> notificationIds = idNotification.stream()
+                    .filter(ObjectId::isValid)
+                    .map(ObjectId::new)
+                    .toList();
+
+            if(notificationIds.isEmpty()) return true;
+
+            Bson update = Updates.combine(
+                    Updates.pullAll("notifications", notificationIds),
+
+                    Updates.pull("lastNotifications", Filters.in("id", notificationIds))
+            );
+
+            UpdateResult result = this.userCollection.updateOne(
+                    Filters.eq("_id", userObjectId),
+                    update
+            );
+
+            return result.getModifiedCount() > 0;
+
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /**
