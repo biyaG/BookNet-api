@@ -375,29 +375,38 @@ public class UserRepository implements UserRepositoryInterface {
 
                 session.executeWrite(tx -> {
                     String cypher = """
-                    MATCH (r:Reader {mid: $userId})
-                    
-                    // Step A: Clear existing relationships (Full Overwrite Strategy)
-                    // We use OPTIONAL MATCH to avoid failing if no relationships exist yet
-                    OPTIONAL MATCH (r)-[r1:INTERESTED_IN]->(:Genre)
-                    OPTIONAL MATCH (r)-[r2:FOLLOWS]->(:Author)
-                    DELETE r1, r2
-                   
-                    // Step B: Rebuild Genre Connections
-                    // We use FOREACH because UNWIND fails the whole query if the list is empty
-                    WITH r
-                    FOREACH (gData IN $genres |
-                        MERGE (g:Genre {mid: gData.id})
-                        ON CREATE SET g.name = gData.name
-                        MERGE (r)-[:INTERESTED_IN]->(g)
-                    )
-                   
-                    // Step C: Rebuild Author Connections
-                    FOREACH (aData IN $authors |
-                        MERGE (a:Author {mid: aData.id})
-                        ON CREATE SET a.name = aData.name
-                        MERGE (r)-[:FOLLOWS]->(a)
-                    )
+                            MATCH (r:Reader {mid: $userId})
+                            
+                            // --- 1. GENRES ---
+                            // A. Prune: Delete relationships to Genres NOT in the new list
+                            WITH r, [g IN $genres | g.id] AS newGenreIds
+                            OPTIONAL MATCH (r)-[rel1:INTERESTED_IN]->(g:Genre)
+                            WHERE NOT g.mid IN newGenreIds
+                            DELETE rel1
+                            
+                            // B. Add: Merge new Genres and relationships
+                            // We use FOREACH so the query doesn't abort if the list is empty
+                            WITH r
+                            FOREACH (gData IN $genres |
+                                MERGE (g:Genre {mid: gData.id})
+                                ON CREATE SET g.name = gData.name
+                                MERGE (r)-[:INTERESTED_IN]->(g)
+                            )
+                            
+                            // --- 2. AUTHORS ---
+                            // A. Prune: Delete relationships to Authors NOT in the new list
+                            WITH r, [a IN $authors | a.id] AS newAuthorIds
+                            OPTIONAL MATCH (r)-[rel2:FOLLOWS]->(a:Author)
+                            WHERE NOT a.mid IN newAuthorIds
+                            DELETE rel2
+                            
+                            // B. Add: Merge new Authors and relationships
+                            WITH r
+                            FOREACH (aData IN $authors |
+                                MERGE (a:Author {mid: aData.id})
+                                ON CREATE SET a.name = aData.name
+                                MERGE (r)-[:FOLLOWS]->(a)
+                            )
                     """;
 
                     tx.run(

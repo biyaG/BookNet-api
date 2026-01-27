@@ -27,8 +27,6 @@ public class BookResponse extends BookSimpleResponse {
     private List<String> languages = new ArrayList<>();
     private List<String> previews = new ArrayList<>();
     private List<String> publishers = new ArrayList<>();
-    private List<AuthorSimpleResponse> authors = List.of();
-    private List<GenreResponse> genres = List.of();
 
     private List<BookSimpleResponse> similarBooks = List.of();
 
@@ -44,18 +42,6 @@ public class BookResponse extends BookSimpleResponse {
         this.languages = book.getLanguages();
         this.previews = book.getPreviews();
         this.publishers = book.getPublishers();
-
-        if (book.getAuthors() != null) {
-            this.authors = book.getAuthors().stream()
-                    .map(AuthorSimpleResponse::new)
-                    .toList();
-        }
-
-        if(book.getGenres() != null){
-            this.genres = book.getGenres().stream()
-                    .map(GenreResponse :: new)
-                    .toList();
-        }
 
         if(book.getSimilarBooks() != null){
             this.similarBooks = book.getSimilarBooks().stream()

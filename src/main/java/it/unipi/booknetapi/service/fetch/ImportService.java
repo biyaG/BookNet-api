@@ -349,6 +349,16 @@ public class ImportService {
 
         this.bookRepository.importBooksAuthors(bookAuthors);
 
+        parameterFetch.setEntityType(EntityType.BOOK_AUTHOR);
+        logFetch(
+                parameterFetch,
+                (long) goodBooks.size(),
+                (long) bookAuthors.size(),
+                bookAuthors.keySet().stream().toList(),
+                true,
+                "Successfully processed " + bookAuthors.size() + " books authors."
+        );
+
         logger.debug("[SERVICE] [IMPORT] [GOOD READS] [BOOK] Importing GoodReads books completed.");
     }
 

@@ -1,5 +1,7 @@
 package it.unipi.booknetapi.model.book;
 
+import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.genre.GenreEmbed;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -19,7 +21,8 @@ public class BookEmbed {
     private Integer numPage;
     private FormatTypeEnum format;
     private List<String> images = new ArrayList<>();
-//    private String externalBookId; //We should have this because that is how we can link the similarbooks
+    private List<AuthorEmbed> authors = new ArrayList<>();
+    private List<GenreEmbed> genres = new ArrayList<>();
 
     public BookEmbed(Book book) {
         this.id = book.getId();
@@ -28,6 +31,8 @@ public class BookEmbed {
         this.numPage = book.getNumPage();
         this.format = book.getFormat();
         this.images = book.getImages();
+        this.authors = book.getAuthors();
+        this.genres = book.getGenres();
     }
 
 }

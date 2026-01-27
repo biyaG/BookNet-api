@@ -9,6 +9,7 @@ public enum EntityType {
 
     AUTHOR("AUTHOR")
     , BOOK("BOOK")
+    , BOOK_AUTHOR("BOOK_AUTHOR")
     , BOOK_GENRE("BOOK_GENRE")
     , GENRE("GENRE")
     , IMPORT_LOG("IMPORT_LOG")

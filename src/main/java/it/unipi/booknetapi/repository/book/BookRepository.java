@@ -225,12 +225,12 @@ public class BookRepository implements BookRepositoryInterface {
             List<Map<String, Object>> neo4jBatch = new ArrayList<>();
 
             List<Book> books = this.mongoCollection.find(Filters.in("_id", ids))
-                    .projection(Projections.include("_id", "title", "isbn", "isbn13"))
+                    .projection(Projections.include("_id", "title", "isbn", "isbn13", "externalId"))
                     .into(new ArrayList<>());
 
             books.forEach(book -> {
                 Map<String, Object> map = new HashMap<>();
-                map.put("id", book.getId());
+                map.put("id", book.getId().toHexString());
                 map.put("title", book.getTitle());
                 map.put("isbn", book.getIsbn());
                 map.put("isbn13", book.getIsbn13());
@@ -299,7 +299,7 @@ public class BookRepository implements BookRepositoryInterface {
         List<Map<String, Object>> neo4jBatch = bookAuthors.entrySet().stream()
                 .map(entry -> Map.of(
                         "bid", entry.getKey(),
-                        "aids", entry.getValue()
+                        "aids", entry.getValue().stream().sorted().toList()
                 ))
                 .toList();
 
@@ -309,19 +309,22 @@ public class BookRepository implements BookRepositoryInterface {
         // C. Create NEW relationships for every author in the list.
         //    We MERGE the Author node to ensure it exists (creating a shell node if missing).
         String query = """
-            UNWIND $batch AS row
-            MATCH (b:Book {mid: row.bid})
-            
-            // 1. Clear existing relationships for this book
-            WITH b, row
-            OPTIONAL MATCH (b)-[r:WRITTEN_BY]->(:Author)
-            DELETE r
-            
-            // 2. Create new relationships
-            WITH b, row
-            UNWIND row.aids AS authorId
-            MERGE (a:Author {mid: authorId})
-            MERGE (b)-[:WRITTEN_BY]->(a)
+                UNWIND $batch AS row
+                MATCH (b:Book {mid: row.bid})
+
+                // --- Remove obsolete relationships ---
+                // Find existing authors connected to this book
+                OPTIONAL MATCH (b)-[r:WRITTEN_BY]->(oldA:Author)
+                // Only delete if the author ID is NOT in our new list
+                WHERE NOT oldA.mid IN row.aids
+                DELETE r
+
+                // Add new relationships ---
+                WITH b, row
+                UNWIND row.aids AS authorId
+                MERGE (a:Author {mid: authorId})
+                // MERGE handles the check: it only creates the rel if it doesn't exist
+                MERGE (b)-[:WRITTEN_BY]->(a)
             """;
 
         try (Session session = this.neo4jManager.getDriver().session()) {
@@ -344,28 +347,17 @@ public class BookRepository implements BookRepositoryInterface {
 
             List<Bson> updates = new ArrayList<>();
             updates.add(Updates.set("externalId.goodReads", bookGoodRead.getBookId()));
-            updates.add(Updates.setOnInsert("externalId", externalId));
+            // updates.add(Updates.setOnInsert("externalId", externalId));
 
             updates.add(Updates.setOnInsert("isbn13", bookGoodRead.getIsbn13()));
             updates.add(Updates.setOnInsert("title", bookGoodRead.getTitle()));
             updates.add(Updates.setOnInsert("subtitle", bookGoodRead.getTitleWithoutSeries()));
             updates.add(Updates.setOnInsert("description", bookGoodRead.getDescription()));
 
-            if(bookGoodRead.getPublicationYear() != null && !bookGoodRead.getPublicationYear().isBlank()) {
-                try {
-                    updates.add(Updates.set("publicationYear", Integer.parseInt(bookGoodRead.getPublicationYear())));
-                } catch (NumberFormatException ignored) {}
-            }
-            if(bookGoodRead.getPublicationMonth() != null && !bookGoodRead.getPublicationMonth().isBlank()) {
-                try {
-                    updates.add(Updates.set("publicationMonth", Integer.parseInt(bookGoodRead.getPublicationMonth())));
-                } catch (NumberFormatException ignored) {}
-            }
-            if(bookGoodRead.getPublicationDay() != null && !bookGoodRead.getPublicationDay().isBlank()) {
-                try {
-                    updates.add(Updates.set("publicationDay", Integer.parseInt(bookGoodRead.getPublicationDay())));
-                } catch (NumberFormatException ignored) {}
-            }
+            parseAndSet(updates, "publicationYear", bookGoodRead.getPublicationYear());
+            parseAndSet(updates, "publicationMonth", bookGoodRead.getPublicationMonth());
+            parseAndSet(updates, "publicationDay", bookGoodRead.getPublicationDay());
+
             if(bookGoodRead.getCountryCode() != null && !bookGoodRead.getCountryCode().isBlank()) {
                 Optional<String> optS = LanguageUtils.getLanguageFromCountry(bookGoodRead.getCountryCode());
                 updates.add(
@@ -382,35 +374,18 @@ public class BookRepository implements BookRepositoryInterface {
                     );
                 }
             }
-            if(bookGoodRead.getImageUrl() != null && !bookGoodRead.getImageUrl().isBlank()) {
-                updates.add(Updates.addToSet("images", bookGoodRead.getImageUrl()));
-            }
-            if(bookGoodRead.getUrl() != null && !bookGoodRead.getUrl().isBlank()) {
-                updates.add(Updates.addToSet("previews", bookGoodRead.getUrl()));
-            }
-            if(bookGoodRead.getPublisher() != null && !bookGoodRead.getPublisher().isBlank()) {
-                updates.add(Updates.addToSet("publishers", bookGoodRead.getPublisher()));
-            }
-            if(bookGoodRead.getAverageRating() != null && !bookGoodRead.getAverageRating().isBlank()) {
-                try {
-                    updates.add(Updates.setOnInsert("ratingReview.rating", Float.parseFloat(bookGoodRead.getAverageRating())));
-                } catch (NumberFormatException ignored) {}
-            } else {
-                updates.add(Updates.setOnInsert("ratingReview.rating", 0f));
-            }
-            if(bookGoodRead.getRatingCount() != null) {
-                try {
-                    updates.add(Updates.setOnInsert("ratingReview.count", Integer.parseInt(bookGoodRead.getRatingCount())));
-                } catch (NumberFormatException ignored) {}
-            } else {
-                updates.add(Updates.setOnInsert("ratingReview.count", 0));
-            }
+
+            addIfPresent(updates, "images", bookGoodRead.getImageUrl());
+            addIfPresent(updates, "previews", bookGoodRead.getUrl());
+            addIfPresent(updates, "publishers", bookGoodRead.getPublisher());
+
+            float rating = parseSafeFloat(bookGoodRead.getAverageRating());
+            int count = parseSafeInt(bookGoodRead.getRatingCount());
+            updates.add(Updates.setOnInsert("ratingReview.rating", rating));
+            updates.add(Updates.setOnInsert("ratingReview.count", count));
 
             writes.add(new UpdateOneModel<>(
-                    // Filters.or(
-                            Filters.eq("isbn", bookGoodRead.getIsbn()),
-                            // Filters.eq("isbn13", bookGoodRead.getIsbn13())
-                    // ),
+                    Filters.eq("isbn", bookGoodRead.getIsbn()),
 
                     Updates.combine(updates),
 
@@ -422,12 +397,10 @@ public class BookRepository implements BookRepositoryInterface {
             BulkWriteResult result = this.mongoCollection
                     .bulkWrite(writes, new BulkWriteOptions().ordered(false));
 
-            List<BulkWriteUpsert> inserts = result.getUpserts();
-
-            List<ObjectId> objectIds = new ArrayList<>();
-            for (BulkWriteUpsert insert : inserts) {
-                objectIds.add(insert.getId().asObjectId().getValue());
-            }
+            List<ObjectId> objectIds = result.getUpserts()
+                    .stream()
+                    .map(upsert -> upsert.getId().asObjectId().getValue())
+                    .toList();
             logger.debug("[REPOSITORY] [Book] [IMPORT] [MONGODB] writes {} books", objectIds.size());
 
             return objectIds;
@@ -436,6 +409,30 @@ public class BookRepository implements BookRepositoryInterface {
         }
 
         return List.of();
+    }
+
+    private void parseAndSet(List<Bson> updates, String field, String value) {
+        if (value != null && !value.isBlank()) {
+            try {
+                updates.add(Updates.set(field, Integer.parseInt(value)));
+            } catch (NumberFormatException ignored) {}
+        }
+    }
+
+    private void addIfPresent(List<Bson> updates, String field, String value) {
+        if (value != null && !value.isBlank()) {
+            updates.add(Updates.addToSet(field, value));
+        }
+    }
+
+    private float parseSafeFloat(String val) {
+        if (val == null) return 0f;
+        try { return Float.parseFloat(val); } catch (NumberFormatException e) { return 0f; }
+    }
+
+    private int parseSafeInt(String val) {
+        if (val == null) return 0;
+        try { return Integer.parseInt(val); } catch (NumberFormatException e) { return 0; }
     }
 
     private void bulkUpdateBooksInNeo4j(List<Map<String, Object>> booksBatch) {
