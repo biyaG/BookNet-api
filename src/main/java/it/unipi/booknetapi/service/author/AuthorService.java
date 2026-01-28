@@ -3,7 +3,11 @@ package it.unipi.booknetapi.service.author;
 import it.unipi.booknetapi.command.author.*;
 import it.unipi.booknetapi.dto.author.AuthorResponse;
 import it.unipi.booknetapi.dto.author.AuthorSimpleResponse;
+import it.unipi.booknetapi.dto.author.AuthorStatResponse;
+import it.unipi.booknetapi.dto.book.BookEmbedResponse;
 import it.unipi.booknetapi.model.author.Author;
+import it.unipi.booknetapi.model.author.AuthorStats;
+import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.model.PageResult;
@@ -16,28 +20,10 @@ import java.util.Objects;
 public class AuthorService {
 
     private final AuthorRepository authorRepository;
-    private final CacheService cacheService;
 
-    private static final String CACHE_PREFIX = "author:";
-    private static final int CACHE_TTL = 3600; // 1 hour
-
-    public AuthorService(AuthorRepository authorRepository, CacheService cacheService) {
+    public AuthorService(AuthorRepository authorRepository) {
         this.authorRepository = authorRepository;
-        this.cacheService = cacheService;
     }
-
-    private static String generateCacheKey(String idAuthor) {
-        return CACHE_PREFIX + idAuthor;
-    }
-
-    private void cacheAuthor(AuthorResponse author) {
-        this.cacheService.save(generateCacheKey(author.getIdAuthor()), author, CACHE_TTL);
-    }
-
-    private void deleteCache(String idAuthor) {
-        this.cacheService.delete(generateCacheKey(idAuthor));
-    }
-
 
     public void migrate() {
         Thread thread = new Thread(this.authorRepository::migrateAuthors);
@@ -53,47 +39,29 @@ public class AuthorService {
 
         if(author == null) return null;
 
-        AuthorResponse authorResponse = new AuthorResponse(author);
-        this.cacheAuthor(authorResponse);
-        return authorResponse;
+        return new AuthorResponse(author);
     }
 
 
     public AuthorResponse getAuthorById(AuthorGetCommand command) {
         if(command.getId() == null) return null;
 
-        try {
-            AuthorResponse authorResponse = this.cacheService.get(generateCacheKey(command.getId()), AuthorResponse.class);
-            if(authorResponse != null) return authorResponse;
-        } catch (Exception ignored) {}
-
         Author author = this.authorRepository.findById(command.getId()).orElse(null);
         if(author == null) return null;
 
-        AuthorResponse authorResponse = new AuthorResponse(author);
-        this.cacheAuthor(authorResponse);
-
-        return authorResponse;
+        return new AuthorResponse(author);
     }
 
     public boolean deleteAuthor(AuthorDeleteCommand command) {
         if(command.getId() == null) return false;
 
-        boolean result =  this.authorRepository.delete(command.getId());
-
-        this.deleteCache(command.getId());
-
-        return result;
+        return this.authorRepository.delete(command.getId());
     }
 
     public boolean deleteMultiAuthors(AuthorIdsDeleteCommand command) {
         if(command.getIds() == null || command.getIds().isEmpty()) return false;
 
-        boolean result = this.authorRepository.delete(command.getIds());
-
-        command.getIds().forEach(this::deleteCache);
-
-        return result;
+        return this.authorRepository.delete(command.getIds());
     }
 
     public PageResult<AuthorSimpleResponse> getAllAuthors(AuthorListCommand command) {
@@ -132,6 +100,42 @@ public class AuthorService {
 
         return authors.stream()
                 .map(AuthorSimpleResponse::new)
+                .toList();
+    }
+
+    public List<BookEmbedResponse> getAuthorBooks(AuthorBooksGetCommand command) {
+        Objects.requireNonNull(command.getId());
+
+        List<BookEmbed> books = this.authorRepository.findBooksByAuthor(command.getId());
+
+        if(books == null) return List.of();
+
+        return books.stream()
+                .map(BookEmbedResponse::new)
+                .toList();
+    }
+
+    public List<AuthorStatResponse> getMostWrittenBooksAuthors(AuthorGetMostWrittenBooksCommand command) {
+        List<AuthorStats> stats = this.authorRepository.findMostWrittenBooksAuthors(command.getLimit() != null ? command.getLimit() : 20);
+
+        return stats.stream()
+                .map(AuthorStatResponse::new)
+                .toList();
+    }
+
+    public List<AuthorStatResponse> getMostFollowedAuthors(AuthorGetMostFollowedAuthors command) {
+        List<AuthorStats> stats = this.authorRepository.findMostFollowedAuthors(command.getLimit() != null ? command.getLimit() : 20);
+
+        return stats.stream()
+                .map(AuthorStatResponse::new)
+                .toList();
+    }
+
+    public List<AuthorStatResponse> getMostReadAuthors(AuthorGetMostReadCommand command) {
+        List<AuthorStats> stats = this.authorRepository.findMostReadAuthors(command.getLimit() != null ? command.getLimit() : 20);
+
+        return stats.stream()
+                .map(AuthorStatResponse::new)
                 .toList();
     }
 

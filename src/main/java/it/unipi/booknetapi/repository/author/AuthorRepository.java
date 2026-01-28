@@ -10,9 +10,8 @@ import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
-import it.unipi.booknetapi.model.book.Book;
+import it.unipi.booknetapi.model.author.AuthorStats;
 import it.unipi.booknetapi.model.book.BookEmbed;
-import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.ExternalId;
@@ -527,6 +526,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         Author author = mongoCollection
                 .find(Filters.eq("_id",  new ObjectId(authorId)))
+                .projection(Projections.include("books"))
                 .first();
 
         if (author == null) {
@@ -716,22 +716,83 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J] Migration complete.");
     }
 
-    private void findTop20PopularAuthors() {
+    private List<AuthorStats> handleFindFromNeo4J(String query, int limit) {
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            return session.executeRead(tx -> {
+                var result = tx.run(query, Values.parameters("limit", limit));
 
-        this.registry.timer("neo4j.ops", "query", "popular_authors").record(() -> {
-            try (Session session = neo4jManager.getDriver().session()) {
-
-                session.executeRead(tx -> {
-                    tx.run("""
-                    MATCH (a:Author)
-                    RETURN a.name AS author,
-                           size((:Reader)-[:FOLLOWS]->(a)) AS followers
-                    ORDER BY followers DESC
-                    LIMIT 20
-                """);
-                    return null;
-                });
-            }
-        });
+                return result.list(record -> AuthorStats.builder()
+                        .id(record.get("id").asString())
+                        .name(record.get("name").asString())
+                        .count(record.get("followers").asLong())
+                        .build()
+                );
+            });
+        }
     }
+
+    /**
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<AuthorStats> findMostWrittenBooksAuthors(int limit) {
+        // productivity means book count
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND MOST WRITTEN BOOKS] limit: {}", limit);
+
+        String query = """
+            MATCH (a:Author)<-[:WRITTEN_BY]-(b:Book)
+            RETURN
+                a.mid AS id,
+                a.name AS name,
+                COUNT(b) AS bookCount
+            ORDER BY bookCount DESC
+            LIMIT $limit
+            """;
+
+        return handleFindFromNeo4J(query, limit);
+    }
+
+    /**
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<AuthorStats> findMostFollowedAuthors(int limit) {
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND MOST FOLLOWED] limit: {}", limit);
+
+        String query = """
+            MATCH (a:Author)<-[r:FOLLOWS]-(:Reader)
+            RETURN
+                a.mid AS id,
+                a.name AS name,
+                COUNT(r) AS followers
+            ORDER BY followers DESC
+            LIMIT $limit
+            """;
+
+        return handleFindFromNeo4J(query, limit);
+    }
+
+    /**
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<AuthorStats> findMostReadAuthors(int limit) {
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND MOST READ] limit: {}", limit);
+
+        String query = """
+        MATCH (:Reader)-[r:ADDED_TO_SHELF]->(b:Book)-[:WRITTEN_BY]->(a:Author)
+        RETURN
+            a.mid AS id,
+            a.name AS name,
+            COUNT(r) AS readCount
+        ORDER BY readCount DESC
+        LIMIT $limit
+        """;
+
+        return handleFindFromNeo4J(query, limit);
+    }
+
 }

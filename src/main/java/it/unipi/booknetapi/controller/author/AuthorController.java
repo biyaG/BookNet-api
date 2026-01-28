@@ -10,6 +10,8 @@ import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.dto.author.AuthorCreateRequest;
 import it.unipi.booknetapi.dto.author.AuthorResponse;
 import it.unipi.booknetapi.dto.author.AuthorSimpleResponse;
+import it.unipi.booknetapi.dto.author.AuthorStatResponse;
+import it.unipi.booknetapi.dto.book.BookEmbedResponse;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.author.AuthorService;
@@ -202,6 +204,51 @@ public class AuthorController {
         }
 
         return ResponseEntity.ok(result);
+    }
+
+
+
+    @GetMapping("/{idAuthor}/books")
+    @Operation(summary = "Get list of books by author")
+    @SecurityRequirements(value = {})
+    public ResponseEntity<List<BookEmbedResponse>> getAuthorBooksById(@PathVariable String idAuthor) {
+        AuthorBooksGetCommand command = AuthorBooksGetCommand.builder()
+                .id(idAuthor)
+                .build();
+
+        return ResponseEntity.ok(this.authorService.getAuthorBooks(command));
+    }
+
+
+    @GetMapping("/most/written-books")
+    @Operation(summary = "Get most")
+    public ResponseEntity<List<AuthorStatResponse>> mostWrittenBooks(@RequestParam(required = false) Integer size) {
+        AuthorGetMostWrittenBooksCommand command = AuthorGetMostWrittenBooksCommand.builder()
+                .limit(size)
+                .build();
+
+        return ResponseEntity.ok(this.authorService.getMostWrittenBooksAuthors(command));
+    }
+
+    @GetMapping("/most/followed")
+    @Operation(summary = "Get most")
+    public ResponseEntity<List<AuthorStatResponse>> mostFollowedAuthors(@RequestParam(required = false) Integer size) {
+        AuthorGetMostFollowedAuthors command = AuthorGetMostFollowedAuthors.builder()
+                .limit(size)
+                .build();
+
+        return ResponseEntity.ok(this.authorService.getMostFollowedAuthors(command));
+    }
+
+
+    @GetMapping("/most/read")
+    @Operation(summary = "Get most")
+    public ResponseEntity<List<AuthorStatResponse>> mostReadAuthors(@RequestParam(required = false) Integer size) {
+        AuthorGetMostReadCommand command = AuthorGetMostReadCommand.builder()
+                .limit(size)
+                .build();
+
+        return ResponseEntity.ok(this.authorService.getMostReadAuthors(command));
     }
 
 }

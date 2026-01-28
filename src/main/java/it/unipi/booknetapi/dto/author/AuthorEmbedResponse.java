@@ -1,10 +1,12 @@
 package it.unipi.booknetapi.dto.author;
 
 import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.author.AuthorStats;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class AuthorEmbedResponse {
@@ -14,6 +16,11 @@ public class AuthorEmbedResponse {
 
     public AuthorEmbedResponse(AuthorEmbed author) {
         this.idAuthor = author.getId().toHexString();
+        this.name = author.getName();
+    }
+
+    public AuthorEmbedResponse(AuthorStats author) {
+        this.idAuthor = author.getId();
         this.name = author.getName();
     }
 }

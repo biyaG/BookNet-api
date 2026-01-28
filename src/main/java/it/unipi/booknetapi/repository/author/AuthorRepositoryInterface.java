@@ -3,6 +3,7 @@ package it.unipi.booknetapi.repository.author;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.author.AuthorStats;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.shared.model.PageResult;
@@ -40,4 +41,8 @@ public interface AuthorRepositoryInterface {
     List<Author> findByExternGoodReadIds(List<String> idAuthors);
 
     void migrateAuthors();
+
+    List<AuthorStats> findMostWrittenBooksAuthors(int limit);
+    List<AuthorStats> findMostFollowedAuthors(int limit);
+    List<AuthorStats> findMostReadAuthors(int limit);
 }
