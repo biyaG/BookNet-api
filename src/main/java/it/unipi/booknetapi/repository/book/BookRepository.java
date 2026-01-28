@@ -1059,7 +1059,7 @@ public class BookRepository implements BookRepositoryInterface {
     private Long countBooksByGenre(String idGenre) {
         String query = """
             MATCH (b:Book)-[:IN_GENRE]->(g:Genre)
-            WHERE g.mid = idGenre
+            WHERE g.mid = $idGenre
             RETURN COUNT(b) AS total
             """;
 
@@ -1144,6 +1144,7 @@ public class BookRepository implements BookRepositoryInterface {
         books.forEach(b -> mapBooks.put(b.getId().toHexString(), b));
 
         return stats.stream()
+                .filter(s -> mapBooks.containsKey(s.getId()))
                 .map(s -> new BookRecommendation(mapBooks.get(s.getId()), s.getTotalScore()))
                 .toList();
     }
