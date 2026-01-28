@@ -875,6 +875,7 @@ public class UserRepository implements UserRepositoryInterface {
         });
     }
 
+
     /**
      * @param idUsers user's ids
      * @return true if the users were deleted successfully, false otherwise

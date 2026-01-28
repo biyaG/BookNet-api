@@ -3,6 +3,7 @@ package it.unipi.booknetapi.repository.author;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
@@ -34,6 +35,7 @@ public interface AuthorRepositoryInterface {
     PageResult<Author> search(String name, int page, int size);
     List<Author> findAll(List<String> idAuthors);
     List<Author> find(List<ObjectId> idAuthors);
+    List<BookEmbed> findBooksByAuthor(String authorId);
 
     List<Author> findByExternGoodReadIds(List<String> idAuthors);
 

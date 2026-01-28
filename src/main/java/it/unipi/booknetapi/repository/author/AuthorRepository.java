@@ -10,6 +10,7 @@ import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.dto.author.AuthorGoodReads;
 import it.unipi.booknetapi.model.author.Author;
+import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
@@ -519,6 +520,23 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     }
 
     @Override
+    public List<BookEmbed> findBooksByAuthor(String authorId) {
+        Objects.requireNonNull(authorId);
+
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [BOOK] [BY AUTHOR] [ID] id: {}", authorId);
+
+        Author author = mongoCollection
+                .find(Filters.eq("_id",  new ObjectId(authorId)))
+                .first();
+
+        if (author == null) {
+            return Collections.emptyList();
+        }
+
+        return author.getBooks();
+    }
+
+    @Override
     public List<Author> findAllById(List<String> authorIds) {
 
         if (authorIds == null || authorIds.isEmpty()) {
@@ -622,6 +640,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 .find(Filters.in("_id", idAuthors))
                 .into(new ArrayList<>());
     }
+
 
     /**
      * @param idAuthors extern goodreads author's ids
