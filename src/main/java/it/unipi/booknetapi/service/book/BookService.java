@@ -2,14 +2,14 @@ package it.unipi.booknetapi.service.book;
 
 import it.unipi.booknetapi.command.book.*;
 import it.unipi.booknetapi.dto.book.BookEmbedResponse;
+import it.unipi.booknetapi.dto.book.BookRecommendationResponse;
 import it.unipi.booknetapi.dto.book.BookResponse;
 import it.unipi.booknetapi.dto.book.BookSimpleResponse;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
+import it.unipi.booknetapi.model.book.BookRecommendation;
 import it.unipi.booknetapi.repository.book.BookRepository;
-import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.model.PageResult;
-import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -124,5 +124,33 @@ public class BookService {
         );
     }
 
+
+    private int getDefaultLimitIfNull(Integer limit) {
+        return limit == null ? 20 : limit;
+    }
+
+    public List<BookRecommendationResponse> getRandomBooks(BookRandomCommand command) {
+        int limit = getDefaultLimitIfNull(command.getLimit());
+        List<BookRecommendation> books = command.getIdUser() == null ? this.bookRepository.findRandomBooks(limit) : this.bookRepository.findRandomBooks(command.getIdUser(), limit);
+        return books.stream().map(BookRecommendationResponse::new).toList();
+    }
+
+    public List<BookRecommendationResponse> getPopularBooksRating(BookPopularByRatingCommand command) {
+        int limit = getDefaultLimitIfNull(command.getLimit());
+        List<BookRecommendation> books = command.getDayAgo() == null ? this.bookRepository.findPopularBooksByRating(limit) : this.bookRepository.findPopularBooksByRating(command.getDayAgo(), limit);
+        return books.stream().map(BookRecommendationResponse::new).toList();
+    }
+
+    public List<BookRecommendationResponse> getPopularBooksShelf(BookPopularByShelfCommand command) {
+        int limit = getDefaultLimitIfNull(command.getLimit());
+        List<BookRecommendation> books = this.bookRepository.findPopularBooksByShelf(limit);
+        return books.stream().map(BookRecommendationResponse::new).toList();
+    }
+
+    public List<BookRecommendationResponse> getCollaborativeBooks(BookRecommendationCommand command) {
+        int limit = getDefaultLimitIfNull(command.getLimit());
+        List<BookRecommendation> books = this.bookRepository.findCollaborativeRecommendationsBooks(command.getIdUser(), limit);
+        return books.stream().map(BookRecommendationResponse::new).toList();
+    }
 
 }

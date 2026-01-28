@@ -6,12 +6,7 @@ import it.unipi.booknetapi.command.user.ReviewerListCommand;
 import it.unipi.booknetapi.command.user.UserGetCommand;
 import it.unipi.booknetapi.dto.user.*;
 import it.unipi.booknetapi.model.user.*;
-// import it.unipi.booknetapi.repository.author.AuthorRepository;
-// import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
-// import it.unipi.booknetapi.shared.lib.authentication.JwtService;
-import it.unipi.booknetapi.shared.lib.cache.CacheService;
-// import it.unipi.booknetapi.shared.lib.encryption.EncryptionManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.springframework.stereotype.Service;
 
@@ -19,33 +14,11 @@ import org.springframework.stereotype.Service;
 public class UserService {
 
     private final UserRepository userRepository;
-    // private final AuthorRepository authorRepository;
-    // private final BookRepository bookRepository;
-    private final CacheService cacheService;
-    // private final EncryptionManager encryptionManager;
-    // private final JwtService jwtService;
 
 
-    private static final String CACHE_PREFIX = "user:";
-    private static final int CACHE_TTL = 3600; // 1 hour
-
-
-    public UserService(
-            UserRepository userRepository
-            // , AuthorRepository authorRepository
-            // , BookRepository bookRepository
-            , CacheService cacheService
-            // , EncryptionManager encryptionManager
-            // , JwtService jwtService
-    ) {
+    public UserService(UserRepository userRepository) {
         this.userRepository = userRepository;
-        // this.authorRepository = authorRepository;
-        // this.bookRepository = bookRepository;
-        this.cacheService = cacheService;
-        // this.encryptionManager = encryptionManager;
-        // this.jwtService = jwtService;
     }
-
 
 
     public ReaderComplexResponse getReaderById(String idUser) {

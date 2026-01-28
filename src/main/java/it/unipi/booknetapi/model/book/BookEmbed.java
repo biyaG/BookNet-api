@@ -15,6 +15,8 @@ import java.util.List;
 @AllArgsConstructor
 public class BookEmbed {
 
+    public final static String[] FIELDS = {"_id", "title", "description", "numPage", "format", "images", "authors", "genres"};
+
     private ObjectId id;
     private String title;
     private String description;

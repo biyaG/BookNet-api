@@ -13,9 +13,10 @@ import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.dto.book.BookGoodReads;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.book.BookRecommendation;
+import it.unipi.booknetapi.model.book.BookStats;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.review.Review;
-import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.review.ReviewSummary;
@@ -26,6 +27,7 @@ import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.utils.LanguageUtils;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
+import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Values;
 import org.slf4j.Logger;
@@ -43,7 +45,6 @@ public class BookRepository implements BookRepositoryInterface {
 
     private final MongoCollection<Book> mongoCollection;
     private final Neo4jManager neo4jManager;
-    private final CacheService cacheService;
     private final MeterRegistry registry;
     private final MongoClient mongoClient;
 
@@ -55,54 +56,20 @@ public class BookRepository implements BookRepositoryInterface {
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
-            CacheService cacheService,
             MeterRegistry registry
     ) {
         this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 50;
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("books", Book.class);
         this.neo4jManager = neo4jManager;
-        this.cacheService = cacheService;
         this.registry = registry;
     }
 
     private boolean handleUpdateResult(UpdateResult result, String idBook) {
-        if (result.getModifiedCount() > 0) {
-            deleteCache(idBook);
-            return true;
-        }
-        return false;
+        return result.getModifiedCount() > 0;
     }
 
-    private static String generateCacheKey(String idBook) {
-        return CACHE_PREFIX + idBook;
-    }
 
-    private void cacheBook(Book book) {
-        this.cacheService.save(generateCacheKey(book.getId().toHexString()), book, CACHE_TTL);
-    }
-
-    private void cacheBook(List<Book> books) {
-        books.forEach(this::cacheBook);
-    }
-
-    private void cacheBookInThread(List<Book> books) {
-        Thread thread = new Thread(() -> cacheBook(books));
-        thread.start();
-    }
-
-    private void deleteCache(String idBook) {
-        this.cacheService.delete(generateCacheKey(idBook));
-    }
-
-    private void deleteCache(List<String> idBooks) {
-        idBooks.forEach(this::deleteCache);
-    }
-
-    private void deleteCacheInThread(List<ObjectId> idBooks) {
-        Thread thread = new Thread(() -> idBooks.forEach(idBook -> deleteCache(idBook.toHexString())));
-        thread.start();
-    }
 
     @Override
     public Book save(Book book) {
@@ -132,7 +99,6 @@ public class BookRepository implements BookRepositoryInterface {
                     saveBookToNeo4j(book);
                     session.commitTransaction();
 
-                    this.cacheBook(book);
                     logger.info("Book inserted successfully: {}", book);
                     return book;
                 }
@@ -192,7 +158,6 @@ public class BookRepository implements BookRepositoryInterface {
                 this.mongoCollection.insertMany(session, books);
                 saveBooksToNeo4j(books);
                 session.commitTransaction();
-                this.cacheBookInThread(books);
 
                 logger.info("Books saved successfully : {}",books.size());
                 return books;
@@ -505,7 +470,6 @@ public class BookRepository implements BookRepositoryInterface {
                 if(deleteResult.getDeletedCount() > 0){
                     deleteBookFromNeo4J(idBook);
                     session.commitTransaction();
-                    this.deleteCache(idBook);
                     return true;
                 }
             }catch(Exception e){
@@ -958,7 +922,6 @@ public class BookRepository implements BookRepositoryInterface {
                 if(deleteResult.getDeletedCount() > 0){
                     deleteBookBatchFromNeo4j(idBooks);
                     session.commitTransaction();
-                    this.deleteCacheInThread(idBooks);
                     return true;
                 }
             }catch(Exception e){
@@ -989,31 +952,20 @@ public class BookRepository implements BookRepositoryInterface {
     public Optional<Book> findById(String idBook) {
         Objects.requireNonNull(idBook);
 
-        Book cachedBook = this.cacheService.get(generateCacheKey(idBook), Book.class);
-        if(cachedBook != null){
-            return Optional.of(cachedBook);
-        }
-        Book book = this.mongoCollection.find(Filters.eq("_id", new ObjectId(idBook))).first();
-        if (book != null){
-           this.cacheBook(book);
-           return Optional.of(book);
-        }
-        return Optional.empty();
+        Book book = this.mongoCollection
+                .find(Filters.eq("_id", new ObjectId(idBook)))
+                .first();
+
+        return book != null ? Optional.of(book) : Optional.empty();
     }
 
     @Override
-    public Optional<List<Book>> findByTitle(String title) {
+    public List<Book> findByTitle(String title) {
         Objects.requireNonNull(title);
 
-        List<Book> books = this.mongoCollection
+        return this.mongoCollection
                 .find(Filters.eq("title", title))
                 .into(new ArrayList<>());
-
-        if(!books.isEmpty()){
-            books.forEach(this::cacheBook);
-            return Optional.of(books);
-        }
-        return Optional.empty();
     }
 
     @Override
@@ -1043,11 +995,9 @@ public class BookRepository implements BookRepositoryInterface {
 
         logger.debug("[REPOSITORY] [BOOK] [FIND] [BY TITLE] titles: {}", titles);
 
-        List<Book> books = this.mongoCollection
+        return this.mongoCollection
                 .find(Filters.in("title", titles))
                 .into(new ArrayList<>());
-
-        return books;
     }
 
     /**
@@ -1067,18 +1017,7 @@ public class BookRepository implements BookRepositoryInterface {
         if(idBooks.isEmpty()) return new PageResult<>(List.of(), total, page, size);
 
         List<Book> books = this.mongoCollection.find(Filters.in("_id", idBooks))
-                .projection(
-                        Projections.include(
-                                "_id",
-                                "title",
-                                "description",
-                                "numPage",
-                                "format",
-                                "images",
-                                "authors",
-                                "genres"
-                        )
-                )
+                .projection(Projections.include(BookEmbed.FIELDS))
                 .into(new ArrayList<>());
 
         List<BookEmbed> bookEmbeds = books.stream().map(BookEmbed::new).toList();
@@ -1189,24 +1128,283 @@ public class BookRepository implements BookRepositoryInterface {
         return new PageResult<>(books, total, page, size);
     }
 
-    private void findPopularBooksFromNeo4j(){
-        this.registry.timer("neo4j.ops", "query", "popular_books").record(() -> {
-            try(Session session = this.neo4jManager.getDriver().session()){
-                session.executeWrite(
-                        tx -> {
-                            tx.run(
-                                    "OPTIONAL MATCH (b:Book)\n" +
-                                            "OPTIONAL MATCH (b)--(r)\n" +
-                                            "RETURN b.title AS title, COUNT(r) AS popularity\n" +
-                                            "ORDER BY popularity DESC\n" +
-                                            "LIMIT 20\n" +
-                                            "\"\"\";" /// why bookIds
-                            );
-                            return null;
-                        }
+
+    private List<BookRecommendation> handleRecommendationResponse(List<BookStats> stats) {
+        List<ObjectId> ids = stats.stream()
+                .filter(s -> ObjectId.isValid(s.getId()))
+                .map(s -> new ObjectId(s.getId()))
+                .toList();
+
+        List<Book> books = this.mongoCollection
+                .find(Filters.in("_id", ids))
+                .projection(Projections.include(BookEmbed.FIELDS))
+                .into(new ArrayList<>());
+
+        Map<String, Book> mapBooks = new HashMap<>();
+        books.forEach(b -> mapBooks.put(b.getId().toHexString(), b));
+
+        return stats.stream()
+                .map(s -> new BookRecommendation(mapBooks.get(s.getId()), s.getTotalScore()))
+                .toList();
+    }
+
+    private List<BookStats> handleStatsResult(Result result) {
+        return result.list(record -> BookStats.builder()
+                .id(record.get("id").asString())
+                .title(record.get("title").asString())
+                .totalScore(record.get("score").asLong())
+                .build()
+        );
+    }
+
+    /**
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<BookRecommendation> findRandomBooks(int limit) {
+        return handleRecommendationResponse(this.findRandomBooksNeo4j(limit));
+    }
+
+    public List<BookStats> findRandomBooksNeo4j(int limit){
+        String query = """
+        MATCH (b:Book)
+        RETURN
+            b.mid AS id,
+            b.title AS title,
+            0 AS score             // Score is irrelevant for random
+        ORDER BY rand()            // Shuffle the results
+        LIMIT $limit
+        """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            return session.executeRead(tx -> {
+                var result = tx.run(query, Values.parameters("limit", limit));
+
+                return handleStatsResult(result);
+            });
+        }
+    }
+
+
+
+    /**
+     * @param idUser
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<BookRecommendation> findRandomBooks(String idUser, int limit) {
+        return handleRecommendationResponse(this.findRandomBooksNeo4j(idUser, limit));
+    }
+
+    private List<BookStats> findRandomBooksNeo4j(String idUser, int limit) {
+        String query = """
+        MATCH (me:Reader {mid: $idUser})
+        MATCH (b:Book)
+        
+        // Exclude books I have already interacted with (Read or Rated)
+        WHERE NOT (me)-[:RATER|ADDED_TO_SHELF]->(b)
+        
+        RETURN
+            b.mid AS id,
+            b.title AS title,
+            0 AS score
+        ORDER BY rand()
+        LIMIT $limit
+        """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            return session.executeRead(tx -> {
+                var result = tx.run(query, Values.parameters(
+                        "idUser", idUser,
+                        "limit", limit
+                ));
+
+                return handleStatsResult(result);
+            });
+        }
+    }
+
+
+    /**
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<BookRecommendation> findPopularBooksByRating(int limit) {
+        return handleRecommendationResponse(this.findPopularBooksByRatingNeo4J(limit));
+    }
+
+    private List<BookStats> findPopularBooksByRatingNeo4J(int limit) {
+        if(limit < 1) limit = 20;
+
+        String query = """
+            MATCH (b:Book)<-[r:RATER]-(:Reader)
+            
+            // 1. Aggregate: Calculate Count AND Average for each book
+            WITH b, COUNT(r) AS score, AVG(r.rating) AS avgRating
+            
+            // 2. Filter: Only keep books with good ratings
+            WHERE avgRating > 3.0
+            
+            RETURN
+                b.mid AS id,
+                b.title AS title,
+                score
+            ORDER BY score DESC
+            LIMIT $limit
+            """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            int finalLimit = limit;
+            return session.executeRead(tx -> {
+                var result = tx.run(query, Values.parameters("limit", finalLimit));
+
+                return handleStatsResult(result);
+            });
+        }
+    }
+
+    /**
+     * @param dayAgo
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<BookRecommendation> findPopularBooksByRating(Long dayAgo, int limit) {
+        return handleRecommendationResponse(this.findPopularBooksByRatingNeo4J(dayAgo, limit));
+    }
+
+    private List<BookStats> findPopularBooksByRatingNeo4J(Long dayAgo, int limit) {
+        long thirtyDaysAgo = System.currentTimeMillis() - (dayAgo * 24 * 60 * 60 * 1000);
+
+        String query = """
+            MATCH (b:Book)<-[r:RATER]-(:Reader)
+            
+            WHERE r.ts >= $cutoff
+            
+            // 1. Aggregate: Calculate Count AND Average for each book
+            WITH b, COUNT(r) AS score, AVG(r.rating) AS avgRating
+            
+            // 2. Filter: Only keep books with good ratings
+            WHERE avgRating > 3.0
+            
+            RETURN
+                b.mid AS id,
+                b.title AS title,
+                score
+            ORDER BY score DESC
+            LIMIT $limit
+            """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            return session.executeRead(tx -> {
+                var result = tx.run(
+                        query,
+                        Values.parameters(
+                                "limit", limit,
+                                "cutoff", thirtyDaysAgo
+                        )
                 );
+
+                return handleStatsResult(result);
+            });
+        }
+    }
+
+
+    /**
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<BookRecommendation> findPopularBooksByShelf(int limit) {
+        return handleRecommendationResponse(this.findPopularBooksByShelfNeo4J(limit));
+    }
+
+    private List<BookStats> findPopularBooksByShelfNeo4J(int limit) {
+        String query = """
+            MATCH (b:Book)<-[r:ADDED_TO_SHELF]-(:Reader)
+            // Optional: Filter for specific status if needed
+            // WHERE r.status IN ['Read', 'Currently Reading']
+            RETURN
+                b.mid AS id,
+                b.title AS title,
+                COUNT(r) AS score
+            ORDER BY score DESC
+            LIMIT $limit
+            """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            return session.executeRead(tx -> {
+                var result = tx.run(query, Values.parameters("limit", limit));
+
+                return handleStatsResult(result);
+            });
+        }
+    }
+
+
+    /**
+     * @param idUser
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<BookRecommendation> findCollaborativeRecommendationsBooks(String idUser, int limit) {
+        return handleRecommendationResponse(this.findCollaborativeRecommendationsBooksNeo4J(idUser, limit));
+    }
+
+    private List<BookStats> findCollaborativeRecommendationsBooksNeo4J(String idUser, int limit) {
+        if (idUser == null || idUser.isBlank()) return Collections.emptyList();
+
+        String query = """
+            MATCH (me:Reader {mid: $idUser})
+            
+            MATCH (me)-[myRel]->(sharedNode)<-[peerRel]-(peer:Reader)
+            WHERE me <> peer
+            AND (
+                (TYPE(myRel) = 'RATER' AND TYPE(peerRel) = 'RATER' AND myRel.rating >= 4 AND peerRel.rating >= 4) OR
+                (TYPE(myRel) = 'ADDED_TO_SHELF' AND TYPE(peerRel) = 'ADDED_TO_SHELF' AND myRel.status = 'Read' AND peerRel.status = 'Read') OR
+                (TYPE(myRel) IN ['FOLLOWS', 'INTERESTED_IN'] AND TYPE(peerRel) IN ['FOLLOWS', 'INTERESTED_IN'])
+            )
+    
+            WITH me, peer,
+                 SUM(CASE
+                    WHEN TYPE(myRel) = 'RATER' THEN 5
+                    WHEN TYPE(myRel) = 'ADDED_TO_SHELF' THEN 3
+                    ELSE 1
+                 END) AS similarityScore
+            ORDER BY similarityScore DESC
+            LIMIT 50
+    
+            MATCH (peer)-[r:RATER|ADDED_TO_SHELF]->(rec:Book)
+            WHERE ((TYPE(r) = 'RATER' AND r.rating >= 4) OR (TYPE(r) = 'ADDED_TO_SHELF' AND r.status = 'Read'))
+            AND NOT (me)-[:RATER|ADDED_TO_SHELF]->(rec)
+    
+            RETURN
+                rec.mid AS id,
+                rec.title AS title,
+                SUM(similarityScore) AS score
+            ORDER BY score DESC
+            LIMIT $limit
+            """;
+
+        this.registry.timer("neo4j.ops", "query", "collab_recommendations").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                return session.executeRead(tx -> {
+                    var result = tx.run(query, Values.parameters(
+                            "idUser", idUser,
+                            "limit", limit
+                    ));
+
+                    return handleStatsResult(result);
+                });
             }
         });
+
+        return Collections.emptyList();
     }
 
 }

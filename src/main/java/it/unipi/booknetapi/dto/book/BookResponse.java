@@ -1,7 +1,5 @@
 package it.unipi.booknetapi.dto.book;
 
-import it.unipi.booknetapi.dto.author.AuthorSimpleResponse;
-import it.unipi.booknetapi.dto.genre.GenreResponse;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.review.ReviewSummary;
 import lombok.*;
@@ -9,13 +7,10 @@ import lombok.*;
 import java.util.ArrayList;
 import java.util.List;
 
-
-@Getter
-@Setter
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-
 public class BookResponse extends BookSimpleResponse {
 
     private Integer publicationYear;

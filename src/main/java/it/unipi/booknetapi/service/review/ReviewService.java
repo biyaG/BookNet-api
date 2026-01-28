@@ -9,7 +9,6 @@ import it.unipi.booknetapi.model.user.UserEmbed;
 import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.review.ReviewRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
-import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
@@ -24,37 +23,18 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
     private final BookRepository bookRepository;
-    private final CacheService cacheService;
 
-    private static final String CACHE_PREFIX = "review:";
-    private static final int CACHE_TTL = 3600; // 1 hour
 
-    public ReviewService(ReviewRepository reviewRepository, UserRepository userRepository, BookRepository bookRepository, CacheService cacheService) {
+    public ReviewService(
+            ReviewRepository reviewRepository,
+            UserRepository userRepository,
+            BookRepository bookRepository
+    ) {
         this.reviewRepository = reviewRepository;
         this.userRepository = userRepository;
         this.bookRepository = bookRepository;
-        this.cacheService = cacheService;
     }
 
-    private static String generateCacheKey(String idReview) {
-        return CACHE_PREFIX + idReview;
-    }
-
-    private static String generateCacheKeyForBook(String idBook, int page) {
-        return CACHE_PREFIX + "book:" + idBook + ":page:" + page;
-    }
-
-    private static String generateCacheKeyForReader(String idReader, int page) {
-        return CACHE_PREFIX + "reader:" + idReader + ":page:" + page;
-    }
-
-    private void cacheReview(ReviewResponse review) {
-        this.cacheService.save(generateCacheKey(review.getIdReview()), review, CACHE_TTL);
-    }
-
-    private void deleteCache(String idReview) {
-        this.cacheService.delete(generateCacheKey(idReview));
-    }
 
     public ReviewResponse saveReview(ReviewCreateCommand command) {
         if(!command.hasUser()) return null;
@@ -88,26 +68,16 @@ public class ReviewService {
         Thread thread = new Thread(task);
         thread.start();
 
-        ReviewResponse reviewResponse = new ReviewResponse(reviewSaved);
-        this.cacheReview(reviewResponse);
-        return reviewResponse;
+        return new ReviewResponse(reviewSaved);
     }
 
     public ReviewResponse getReviewById(ReviewGetCommand command) {
         if(command.getId() == null) return null;
 
-        try {
-            ReviewResponse reviewResponse = this.cacheService.get(generateCacheKey(command.getId()), ReviewResponse.class);
-            if(reviewResponse != null) return reviewResponse;
-        } catch (Exception ignored) {}
-
         Review review = this.reviewRepository.findById(command.getId()).orElse(null);
         if(review == null) return null;
 
-        ReviewResponse reviewResponse = new ReviewResponse(review);
-        this.cacheReview(reviewResponse);
-
-        return reviewResponse;
+        return new ReviewResponse(review);
     }
 
     public boolean deleteReview(ReviewDeleteCommand command) {
@@ -121,11 +91,7 @@ public class ReviewService {
 
         if(!Objects.equals(command.getUserToken().getIdUser(), review.getUser().getId().toHexString())) return false;
 
-        boolean result = this.reviewRepository.delete(command.getId());
-
-        this.cacheService.delete(generateCacheKey(command.getId()));
-
-        return result;
+        return this.reviewRepository.delete(command.getId());
     }
 
     public boolean deleteReview(ReviewIdsDeleteCommand command) {
@@ -134,11 +100,7 @@ public class ReviewService {
 
         if(command.getUserToken().getRole() != Role.Admin) return false;
 
-        boolean result = this.reviewRepository.delete(command.getIds());
-
-        command.getIds().forEach(this::deleteCache);
-
-        return result;
+        return this.reviewRepository.delete(command.getIds());
     }
 
     public List<ReviewResponse> getReviews(ReviewIdsListCommand command) {

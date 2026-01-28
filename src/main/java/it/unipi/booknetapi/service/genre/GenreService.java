@@ -4,7 +4,6 @@ import it.unipi.booknetapi.command.genre.*;
 import it.unipi.booknetapi.dto.genre.GenreResponse;
 import it.unipi.booknetapi.model.genre.Genre;
 import it.unipi.booknetapi.repository.genre.GenreRepository;
-import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.springframework.stereotype.Service;
 
@@ -14,28 +13,9 @@ import java.util.List;
 public class GenreService {
 
     private final GenreRepository genreRepository;
-    private final CacheService cacheService;
 
-    public GenreService(GenreRepository genreRepository, CacheService cacheService) {
+    public GenreService(GenreRepository genreRepository) {
         this.genreRepository = genreRepository;
-        this.cacheService = cacheService;
-    }
-
-
-    private static final String CACHE_PREFIX = "genre:";
-    private static final int CACHE_TTL = 3600; // 1 hour
-
-
-    private static String generateCacheKey(String idGenre) {
-        return CACHE_PREFIX + idGenre;
-    }
-
-    private void cacheGenre(GenreResponse genre) {
-        this.cacheService.save(generateCacheKey(genre.getIdGenre()), genre, CACHE_TTL);
-    }
-
-    private void deleteCache(String idGenre) {
-        this.cacheService.delete(generateCacheKey(idGenre));
     }
 
 
@@ -45,48 +25,29 @@ public class GenreService {
         Genre genreNew = new Genre(command);
         Genre genre = this.genreRepository.insert(genreNew);
 
-        GenreResponse genreResponse = new GenreResponse(genre);
-        cacheGenre(genreResponse);
-
-        return genreResponse;
+        return new GenreResponse(genre);
     }
 
 
     public GenreResponse getGenreById(GenreGetCommand command) {
         if(command.getId() == null) return null;
 
-        try {
-            GenreResponse genreResponse = this.cacheService.get(generateCacheKey(command.getId()), GenreResponse.class);
-            if(genreResponse != null) return genreResponse;
-        } catch (Exception ignored) {}
-
         Genre genre = this.genreRepository.findById(command.getId()).orElse(null);
         if(genre == null) return null;
 
-        GenreResponse genreResponse = new GenreResponse(genre);
-        this.cacheGenre(genreResponse);
-
-        return genreResponse;
+        return new GenreResponse(genre);
     }
 
     public boolean deleteGenreById(GenreDeleteCommand command) {
         if(command.getId() == null) return false;
 
-        boolean result =  this.genreRepository.delete(command.getId());
-
-        this.deleteCache(command.getId());
-
-        return result;
+        return this.genreRepository.delete(command.getId());
     }
 
     public boolean deleteAllGenres(GenreIdsDeleteCommand command) {
         if(command.getIds() == null || command.getIds().isEmpty()) return false;
 
-        boolean result = this.genreRepository.delete(command.getIds());
-
-        command.getIds().forEach(this::deleteCache);
-
-        return result;
+        return this.genreRepository.delete(command.getIds());
     }
 
     public PageResult<GenreResponse> getAllGenres(GenreListCommand command) {

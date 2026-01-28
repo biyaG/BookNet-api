@@ -9,7 +9,6 @@ import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.author.AuthorStats;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
-import it.unipi.booknetapi.shared.lib.cache.CacheService;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.springframework.stereotype.Service;
 

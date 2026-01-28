@@ -4,7 +4,7 @@ import it.unipi.booknetapi.dto.book.BookGoodReads;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
-import it.unipi.booknetapi.model.genre.Genre;
+import it.unipi.booknetapi.model.book.BookRecommendation;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.shared.model.PageResult;
@@ -37,11 +37,18 @@ public interface BookRepositoryInterface {
     PageResult<Book> findAll(int page, int size);
     PageResult<Book> search(String title, int page, int size);
     Optional<Book> findById(String idBook);
-    Optional<List<Book>> findByTitle(String title);
+    List<Book> findByTitle(String title);
     List<Book> searchByTitle(String title);
     List<Book> findByTitle(List<String> titles);
 
     PageResult<BookEmbed> findBooksByGenre(String idGenre, int page, int size);
 
     List<Book> findByGoodReadsExternIds(List<String> externBookIds);
+
+    List<BookRecommendation> findRandomBooks(int limit);
+    List<BookRecommendation> findRandomBooks(String idUser, int limit);
+    List<BookRecommendation> findPopularBooksByRating(int limit);
+    List<BookRecommendation> findPopularBooksByRating(Long dayAgo, int limit);
+    List<BookRecommendation> findPopularBooksByShelf(int limit);
+    List<BookRecommendation> findCollaborativeRecommendationsBooks(String idUser, int limit);
 }

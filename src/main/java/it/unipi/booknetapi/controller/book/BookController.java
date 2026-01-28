@@ -10,10 +10,7 @@ import it.unipi.booknetapi.command.book.*;
 import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
 import it.unipi.booknetapi.command.review.ReviewCreateCommand;
-import it.unipi.booknetapi.dto.book.BookCreateRequest;
-import it.unipi.booknetapi.dto.book.BookEmbedResponse;
-import it.unipi.booknetapi.dto.book.BookResponse;
-import it.unipi.booknetapi.dto.book.BookSimpleResponse;
+import it.unipi.booknetapi.dto.book.*;
 import it.unipi.booknetapi.dto.review.ReviewCreateRequest;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
 import it.unipi.booknetapi.model.user.Role;
@@ -275,7 +272,7 @@ public class BookController {
     @GetMapping("by/genre/{idGenre}")
     @Operation(summary = "Get all Books by Genre")
     @SecurityRequirements(value = {})
-    public ResponseEntity<PageResult<BookEmbedResponse>> getAllBooks(
+    public ResponseEntity<PageResult<BookEmbedResponse>> booksByGenre(
             @PathVariable String idGenre,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size
@@ -293,5 +290,59 @@ public class BookController {
 
         return ResponseEntity.ok(this.bookService.getBooksByGenre(command));
     }
+
+
+
+    @GetMapping("/random")
+    @Operation(summary = "Get random books")
+    @SecurityRequirements(value = {})
+    public ResponseEntity<List<BookRecommendationResponse>> randomBooks(@RequestParam(required = false) Integer size) {
+        BookRandomCommand command = BookRandomCommand.builder()
+                .limit(size)
+                .build();
+
+        return ResponseEntity.ok(this.bookService.getRandomBooks(command));
+    }
+
+    @GetMapping("/popular/rating")
+    @Operation(summary = "Get popular rating books")
+    @SecurityRequirements(value = {})
+    public ResponseEntity<List<BookRecommendationResponse>> popularRatingBooks(@RequestParam(required = false) Integer size, @RequestParam(required = false) Long dayAgo) {
+        BookPopularByRatingCommand command = BookPopularByRatingCommand.builder()
+                .limit(size)
+                .dayAgo(dayAgo)
+                .build();
+
+        return ResponseEntity.ok(this.bookService.getPopularBooksRating(command));
+    }
+
+    @GetMapping("/popular/shelf")
+    @Operation(summary = "Get popular books in shelf")
+    @SecurityRequirements(value = {})
+    public ResponseEntity<List<BookRecommendationResponse>> popularBooksInShelf(@RequestParam(required = false) Integer size) {
+        BookPopularByShelfCommand command = BookPopularByShelfCommand.builder()
+                .limit(size)
+                .build();
+
+        return ResponseEntity.ok(this.bookService.getPopularBooksShelf(command));
+    }
+
+    @GetMapping("/recommendation")
+    @Operation(summary = "Get recommendation books")
+    public ResponseEntity<List<BookRecommendationResponse>> recommendationBooks(@RequestHeader("Authorization") String token, @RequestParam(required = false) Integer size) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader){
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        BookRecommendationCommand command = BookRecommendationCommand.builder()
+                .idUser(userToken.getIdUser())
+                .limit(size)
+                .build();
+
+        return ResponseEntity.ok(this.bookService.getCollaborativeBooks(command));
+    }
+
 
 }
