@@ -1105,4 +1105,24 @@ public class BookRepository implements BookRepositoryInterface {
         return new PageResult<>(books, total, page, size);
     }
 
+    private void findPopularBooksFromNeo4j(){
+        this.registry.timer("neo4j.ops", "query", "popular_books").record(() -> {
+            try(Session session = this.neo4jManager.getDriver().session()){
+                session.executeWrite(
+                        tx -> {
+                            tx.run(
+                                    "OPTIONAL MATCH (b:Book)\n" +
+                                            "OPTIONAL MATCH (b)--(r)\n" +
+                                            "RETURN b.title AS title, COUNT(r) AS popularity\n" +
+                                            "ORDER BY popularity DESC\n" +
+                                            "LIMIT 20\n" +
+                                            "\"\"\";" /// why bookIds
+                            );
+                            return null;
+                        }
+                );
+            }
+        });
+    }
+
 }

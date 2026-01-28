@@ -715,4 +715,23 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J] Migration complete.");
     }
+
+    private void findTop20PopularAuthors() {
+
+        this.registry.timer("neo4j.ops", "query", "popular_authors").record(() -> {
+            try (Session session = neo4jManager.getDriver().session()) {
+
+                session.executeRead(tx -> {
+                    tx.run("""
+                    MATCH (a:Author)
+                    RETURN a.name AS author,
+                           size((:Reader)-[:FOLLOWS]->(a)) AS followers
+                    ORDER BY followers DESC
+                    LIMIT 20
+                """);
+                    return null;
+                });
+            }
+        });
+    }
 }
