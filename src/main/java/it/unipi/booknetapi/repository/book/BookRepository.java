@@ -2,7 +2,6 @@ package it.unipi.booknetapi.repository.book;
 
 
 import com.mongodb.bulk.BulkWriteResult;
-import com.mongodb.bulk.BulkWriteUpsert;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
@@ -13,7 +12,6 @@ import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.dto.book.BookGoodReads;
-import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.review.Review;
@@ -60,7 +58,7 @@ public class BookRepository implements BookRepositoryInterface {
             CacheService cacheService,
             MeterRegistry registry
     ) {
-        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 100;
+        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 50;
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("books", Book.class);
         this.neo4jManager = neo4jManager;
@@ -215,8 +213,8 @@ public class BookRepository implements BookRepositoryInterface {
 
         List<Book> result = new ArrayList<>(importedBooks.size());
 
-        for(int i=0; i < importedBooks.size(); i += batchSize) {
-            int endIndex = Math.min(i + batchSize, importedBooks.size());
+        for(int i=0; i < importedBooks.size(); i += this.batchSize) {
+            int endIndex = Math.min(i + this.batchSize, importedBooks.size());
 
             List<BookGoodReads> booksBatch = importedBooks.subList(i, endIndex);
 
@@ -312,14 +310,14 @@ public class BookRepository implements BookRepositoryInterface {
                 UNWIND $batch AS row
                 MATCH (b:Book {mid: row.bid})
 
-                // --- Remove obsolete relationships ---
+                // Remove obsolete relationships
                 // Find existing authors connected to this book
                 OPTIONAL MATCH (b)-[r:WRITTEN_BY]->(oldA:Author)
                 // Only delete if the author ID is NOT in our new list
                 WHERE NOT oldA.mid IN row.aids
                 DELETE r
 
-                // Add new relationships ---
+                // Add new relationships
                 WITH b, row
                 UNWIND row.aids AS authorId
                 MERGE (a:Author {mid: authorId})
@@ -642,7 +640,7 @@ public class BookRepository implements BookRepositoryInterface {
                 UpdateResult result = this.mongoCollection
                         .updateOne(
                                 Filters.eq("_id", new ObjectId(idBook)),
-                                Updates.set("books", books)
+                                Updates.set("similar_books", books)
                         );
 
                 if (result.getModifiedCount() > 0) {
@@ -654,15 +652,184 @@ public class BookRepository implements BookRepositoryInterface {
                 }
             } catch (Exception e) {
                 mongoSession.abortTransaction();
-                logger.error("[REPOSITORY] BOOK] [SET BOOKS] Error during transaction: {}", e.getMessage());
+                logger.error("[REPOSITORY] [BOOK] [SET BOOKS] Error during transaction: {}", e.getMessage());
             }
         }
 
-        UpdateResult updateResult = this.mongoCollection.updateOne(
-                Filters.eq("_id", new ObjectId(idBook)),
-                Updates.set("similar_books", books)
-        );
-        return handleUpdateResult(updateResult, idBook);
+        return false;
+    }
+
+    private void updateSimilarBooksInNeo4J(String idBook, List<BookEmbed> books) {
+        Objects.requireNonNull(idBook);
+        Objects.requireNonNull(books);
+
+        if(!ObjectId.isValid(idBook)) return ;
+
+        List<Map<String, String>> bookListParams = books.stream()
+                .map(g -> Map.of(
+                        "id", g.getId().toHexString(),
+                        "title", g.getTitle()
+                ))
+                .toList();
+
+        String cypher = """
+            MATCH (b:Book {mid: $bookId})
+            
+            // 1. Prune: Identify which IDs we want to keep
+            WITH b, [s IN $books | s.id] AS targetIds
+            
+            // Delete relationships to books NOT in the target list
+            OPTIONAL MATCH (b)-[r:SIMILAR_TO]->(other:Book)
+            WHERE NOT other.mid IN targetIds
+            DELETE r
+            
+            // 2. Merge: Add new relationships
+            // We use WITH b to pass the node after the DELETE operation
+            WITH b
+            UNWIND $books AS sData
+                MERGE (s:Book {mid: sData.id})
+                ON CREATE SET s.title = sData.title
+                MERGE (b)-[:SIMILAR_TO]->(s)
+            """;
+
+        this.registry.timer("neo4j.ops", "query", "similar_books").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(
+                        tx -> {
+                            tx.run(
+                                    cypher,
+                                    Values.parameters(
+                                            "bookId", idBook,
+                                            "books", bookListParams
+                                    )
+                            );
+                            return null;
+                        }
+                );
+            }
+        });
+    }
+
+    /**
+     * @param mapBooks
+     * @return
+     */
+    @Override
+    public boolean updateSimilarBooks(Map<String, List<BookEmbed>> mapBooks) {
+        if (mapBooks == null || mapBooks.isEmpty()) return false;
+
+        logger.debug("[REPOSITORY] [BOOK] [SET BOOKS] Processing {} books", mapBooks.size());
+
+        // Convert Map to List for indexed batching
+        List<Map.Entry<String, List<BookEmbed>>> entries = new ArrayList<>(mapBooks.entrySet());
+        boolean allBatchesSuccess = true;
+
+        // Process in Batches
+        for (int i = 0; i < entries.size(); i += this.batchSize) {
+            int end = Math.min(i + this.batchSize, entries.size());
+            List<Map.Entry<String, List<BookEmbed>>> batchEntries = entries.subList(i, end);
+
+            // Convert batch back to a Map or List for processing
+            Map<String, List<BookEmbed>> currentBatch = new HashMap<>();
+            for (Map.Entry<String, List<BookEmbed>> entry : batchEntries) {
+                currentBatch.put(entry.getKey(), entry.getValue());
+            }
+
+            // Process this specific batch in its own transaction context
+            boolean batchSuccess = bulkUpSet(currentBatch);
+            if (!batchSuccess) {
+                allBatchesSuccess = false;
+                // Optional: break; if you want to stop immediately on first error
+            }
+        }
+
+        return allBatchesSuccess;
+    }
+
+    private boolean bulkUpSet(Map<String, List<BookEmbed>> batch) {
+        logger.debug("[REPOSITORY] [BOOK] [IMPORT] [BOOK SIMILARITY] Importing {} books from GoodReads", batch.size());
+
+
+        try (ClientSession mongoSession = this.mongoClient.startSession()) {
+            mongoSession.startTransaction();
+
+            try {
+                List<WriteModel<Book>> writes = new ArrayList<>();
+
+                for (Map.Entry<String, List<BookEmbed>> entry : batch.entrySet()) {
+                    String bookId = entry.getKey();
+                    if (ObjectId.isValid(bookId)) {
+                        writes.add(new UpdateOneModel<>(
+                                Filters.eq("_id", new ObjectId(bookId)),
+                                Updates.set("similar_books", entry.getValue())
+                        ));
+                    }
+                }
+
+                if (writes.isEmpty()) return true;
+
+                BulkWriteResult result = this.mongoCollection.bulkWrite(mongoSession, writes);
+
+                if (result.getMatchedCount() > 0) {
+                    bulkUpdateSimilarBooksInNeo4J(batch);
+
+                    mongoSession.commitTransaction();
+                    return true;
+                } else {
+                    mongoSession.abortTransaction();
+                    return false;
+                }
+            } catch (Exception e) {
+                mongoSession.abortTransaction();
+                logger.error("[REPOSITORY] [BOOK] [SET BOOKS] Error during batch transaction: {}", e.getMessage());
+                return false;
+            }
+        }
+    }
+
+    private void bulkUpdateSimilarBooksInNeo4J(Map<String, List<BookEmbed>> mapBooks) {
+        if (mapBooks.isEmpty()) return;
+
+        List<Map<String, Object>> neo4jBatch = mapBooks.entrySet().stream()
+                .map(entry -> {
+                    List<Map<String, String>> simList = entry.getValue().stream()
+                            .map(g -> Map.of(
+                                    "id", g.getId().toHexString(),
+                                    "title", g.getTitle()
+                            ))
+                            .toList();
+
+                    return Map.<String, Object>of(
+                            "bid", entry.getKey(),
+                            "sim", simList
+                    );
+                })
+                .toList();
+
+        String cypher = """
+            UNWIND $batch AS row
+            MATCH (b:Book {mid: row.bid})
+            WITH b, row, [s IN row.sim | s.id] AS targetIds
+            
+            OPTIONAL MATCH (b)-[r:SIMILAR_TO]->(other:Book)
+            WHERE NOT other.mid IN targetIds
+            DELETE r
+            
+            WITH b, row
+            UNWIND row.sim AS sData
+                MERGE (s:Book {mid: sData.id})
+                ON CREATE SET s.title = sData.title
+                MERGE (b)-[:SIMILAR_TO]->(s)
+            """;
+
+        this.registry.timer("neo4j.ops", "query", "bulk_similar_books").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(cypher, Values.parameters("batch", neo4jBatch));
+                    return null;
+                });
+            }
+        });
     }
 
     @Override
@@ -744,76 +911,6 @@ public class BookRepository implements BookRepositoryInterface {
             }
         });
     }
-
-
-
-
-    private void updateSimilarBooksInNeo4J(String idBook, List<BookEmbed> books) {
-        Objects.requireNonNull(idBook);
-        Objects.requireNonNull(books);
-
-        if(!ObjectId.isValid(idBook)) return ;
-
-        List<Map<String, String>> bookListParams = books.stream()
-                .map(g -> Map.of(
-                        "id", g.getId().toHexString(),
-                        "title", g.getTitle()
-
-                ))
-                .toList();
-
-        String cypher = """
-            MATCH (b:Book {mid: $bookId})
-            
-//            WITH b
-//            OPTIONAL MATCH (b)-[r:IN_GENRE]->(:Genre)
-//            DELETE r
-//            
-//            WITH b
-//            UNWIND $genres AS gData
-//            MERGE (g:Genre {mid: gData.id})
-//            ON CREATE SET g.name = gData.name
-//            MERGE (b)-[:IN_GENRE]->(g)
-            
-            
-                / Collect the IDs we WANT to keep
-                WITH b, [s IN $similarBooks | s.id] AS targetIds
-                
-                // 1. Delete relationships to books NOT in the new list
-                OPTIONAL MATCH (b)-[r:SIMILAR_TO]->(other:Book)
-                WHERE NOT other.mid IN targetIds
-                DELETE r
-                
-                // 2. Merge the new ones (MERGE won't duplicate if they already exist)
-                WITH b
-                UNWIND $similarBooks AS sData
-                MERGE (s:Book {mid: sData.id})
-                ON CREATE SET s.title = sData.title
-                MERGE (b)-[:SIMILAR_TO]->(s)
-            """;
-
-        this.registry.timer("neo4j.ops", "query", "similar_books").record(() -> {
-            try (Session session = this.neo4jManager.getDriver().session()) {
-                session.executeWrite(
-                        tx -> {
-                            tx.run(
-                                    cypher,
-                                    Values.parameters(
-                                            "bookId", idBook,
-                                            "books", books
-                                    )
-                            );
-                            return null;
-                        }
-                );
-            }
-        });
-    }
-
-
-
-
-
 
 
     @Override

@@ -476,6 +476,7 @@ public class ImportService {
 
         long updated = 0L;
 
+        Map<String, List<BookEmbed>> mapBooks = new HashMap<>();
         for (BookGoodReads item : parameterFetch.getData()) {
 
             if (item.getBookId() == null || item.getSimilarBooks() == null || item.getSimilarBooks().isEmpty())
@@ -502,19 +503,17 @@ public class ImportService {
 
             if (similarEmbeds.isEmpty()) continue;
 
-            // 6. Save
-            if (bookRepository.updateSimilarBooks(
-                    mainBook.getId().toHexString(),
-                    similarEmbeds
-            )) {
-                updated++;
-            }
+            mapBooks.put(mainBook.getId().toHexString(), similarEmbeds);
+
+            updated++;
         }
+
+        boolean success = this.bookRepository.updateSimilarBooks(mapBooks);
 
         logFetch(
                 parameterFetch,
                 (long) allBookIds.size(),
-                updated,
+                success ? updated : 0,
                 new ArrayList<>(),
                 true,
                 "Successfully processed similar books."

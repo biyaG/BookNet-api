@@ -1,5 +1,6 @@
 package it.unipi.booknetapi.model.user;
 
+import it.unipi.booknetapi.model.book.BookEmbed;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;

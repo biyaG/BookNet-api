@@ -14,7 +14,7 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    private static final Long EXPIRATION_TIME = (long) 1000 * 60 * 60 * 2; // in milliseconds
+    private static final Long EXPIRATION_TIME = (long) 1000 * 60 * 60 * 24; // in milliseconds
 
     private final Algorithm algorithm;
 
