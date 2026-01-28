@@ -532,7 +532,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         if (author == null) {
             return Collections.emptyList();
         }
-
         return author.getBooks();
     }
 
