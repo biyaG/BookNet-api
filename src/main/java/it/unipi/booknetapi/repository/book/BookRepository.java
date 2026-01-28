@@ -1050,6 +1050,90 @@ public class BookRepository implements BookRepositoryInterface {
         return books;
     }
 
+    /**
+     * @param idGenre
+     * @return
+     */
+    @Override
+    public PageResult<BookEmbed> findBooksByGenre(String idGenre, int page, int size) {
+        Objects.requireNonNull(idGenre);
+
+        Long total = this.countBooksByGenre(idGenre);
+
+        if(total == null || total == 0) return new PageResult<>(List.of(), 0, page, size);
+
+        List<String> idBooks = this.findBooksByGenreNeo4j(idGenre, page, size);
+
+        if(idBooks.isEmpty()) return new PageResult<>(List.of(), total, page, size);
+
+        List<Book> books = this.mongoCollection.find(Filters.in("_id", idBooks))
+                .projection(
+                        Projections.include(
+                                "_id",
+                                "title",
+                                "description",
+                                "numPage",
+                                "format",
+                                "images",
+                                "authors",
+                                "genres"
+                        )
+                )
+                .into(new ArrayList<>());
+
+        List<BookEmbed> bookEmbeds = books.stream().map(BookEmbed::new).toList();
+
+        return new PageResult<>(bookEmbeds, total, page, size);
+    }
+
+    private List<String> findBooksByGenreNeo4j(String idGenre, int page, int size) {
+        if(page < 0) page = 0;
+        if(size < 1) size = 10;
+
+        int skip = page * size;
+
+        String query = """
+            MATCH (b:Book)-[:IN_GENRE]->(g:Genre)
+            WHERE g.mid = genreId
+            RETURN
+                b.mid AS id,
+                b.title AS title
+            ORDER BY b.title ASC
+            SKIP $skip
+            LIMIT $limit
+            """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            int finalSize = size;
+            return session.executeRead(tx -> {
+                var result = tx.run(query, Values.parameters(
+                        "genreId", idGenre,
+                        "skip", skip,
+                        "limit", finalSize
+                ));
+
+                return result.list(record -> record.get("id").asString());
+            });
+        }
+    }
+
+    private Long countBooksByGenre(String idGenre) {
+        String query = """
+            MATCH (b:Book)-[:IN_GENRE]->(g:Genre)
+            WHERE g.mid = idGenre
+            RETURN COUNT(b) AS total
+            """;
+
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            return session.executeRead(tx ->
+                    tx.run(query, Values.parameters("idGenre", idGenre))
+                            .single()
+                            .get("total")
+                            .asLong()
+            );
+        }
+    }
+
     @Override
     public List<Book> findByGoodReadsExternIds(List<String> externBookIds) {
         Objects.requireNonNull(externBookIds);

@@ -41,5 +41,7 @@ public interface BookRepositoryInterface {
     List<Book> searchByTitle(String title);
     List<Book> findByTitle(List<String> titles);
 
+    PageResult<BookEmbed> findBooksByGenre(String idGenre, int page, int size);
+
     List<Book> findByGoodReadsExternIds(List<String> externBookIds);
 }

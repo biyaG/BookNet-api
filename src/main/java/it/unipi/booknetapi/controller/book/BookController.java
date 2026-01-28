@@ -11,6 +11,7 @@ import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
 import it.unipi.booknetapi.command.review.ReviewCreateCommand;
 import it.unipi.booknetapi.dto.book.BookCreateRequest;
+import it.unipi.booknetapi.dto.book.BookEmbedResponse;
 import it.unipi.booknetapi.dto.book.BookResponse;
 import it.unipi.booknetapi.dto.book.BookSimpleResponse;
 import it.unipi.booknetapi.dto.review.ReviewCreateRequest;
@@ -269,6 +270,28 @@ public class BookController {
             PageResult<BookSimpleResponse> result = this.bookService.searchBooks(command);
             return ResponseEntity.ok(result);
         }
+    }
+
+    @GetMapping("by/genre/{idGenre}")
+    @Operation(summary = "Get all Books by Genre")
+    @SecurityRequirements(value = {})
+    public ResponseEntity<PageResult<BookEmbedResponse>> getAllBooks(
+            @PathVariable String idGenre,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
+    ){
+
+        PaginationRequest paginationRequest = PaginationRequest.builder()
+                .page(page != null ? page : 0)
+                .size(size != null ? size : 10)
+                .build();
+
+        BookGetByGenreCommand command = BookGetByGenreCommand.builder()
+                .idGenre(idGenre)
+                .pagination(paginationRequest)
+                .build();
+
+        return ResponseEntity.ok(this.bookService.getBooksByGenre(command));
     }
 
 }
