@@ -1060,7 +1060,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         if(externUserIds.isEmpty()) return List.of();
 
-        logger.debug("[REPOSITORY] [USER] [FIND] [BY EXTERN IDS] ids: {}", externUserIds);
+        logger.debug("[REPOSITORY] [USER] [FIND] [BY EXTERN IDS] ids: {}", externUserIds.size());
 
         return this.reviewerCollection
                 .find(Filters.in("externalId.goodReads", externUserIds))

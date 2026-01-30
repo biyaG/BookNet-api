@@ -420,6 +420,7 @@ public class ImportService {
         List<String> allGenreNames = parameterFetch.getData().stream()
                 .filter(item -> item.getGenres() != null)
                 .flatMap(item -> item.getGenres().keySet().stream())
+                .distinct()
                 .toList();
         Map<String, Genre> mapNameGenre = resolveGenres(allGenreNames);
 
@@ -611,7 +612,8 @@ public class ImportService {
                 .filter(b -> b.getExternalId() != null && b.getExternalId().getGoodReads() != null)
                 .collect(Collectors.toMap(
                         b -> b.getExternalId().getGoodReads(),
-                        b -> b
+                        b -> b,
+                        (existing, replacement) -> existing
                 ));
 
         Map<String, Reviewer> mapExternIdUser = findOrGenerateReviewers(externUserIds);

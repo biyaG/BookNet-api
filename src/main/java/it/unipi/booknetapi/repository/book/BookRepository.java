@@ -1079,7 +1079,7 @@ public class BookRepository implements BookRepositoryInterface {
 
         if(externBookIds.isEmpty()) return List.of();
 
-        logger.debug("[REPOSITORY] [BOOK] [FIND] [BY EXTERN IDS] ids: {}", externBookIds);
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [BY EXTERN IDS] ids: {}", externBookIds.size());
 
         List<Book> books = this.mongoCollection
                 .find(Filters.in("externalId.goodReads", externBookIds))

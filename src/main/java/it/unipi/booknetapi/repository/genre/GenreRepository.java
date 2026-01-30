@@ -123,6 +123,8 @@ public class GenreRepository implements GenreRepositoryInterface {
                 .stream()
                 .toList();
 
+        if(distinctInput.isEmpty()) return List.of();
+
         List<String> names = distinctInput.stream().map(Genre::getName).toList();
 
         logger.debug("[REPOSITORY] [GENRE] [INSERT] [MANY] genres size: {}", genres.size());
@@ -142,6 +144,8 @@ public class GenreRepository implements GenreRepositoryInterface {
                 List<Genre> newGenres = distinctInput.stream()
                         .filter(g -> !existingNames.contains(g.getName()))
                         .toList();
+
+                if(newGenres.isEmpty()) return existingGenres;
 
                 InsertManyResult insertManyResult = this.mongoCollection.insertMany(mongoSession, newGenres);
 
@@ -259,7 +263,7 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         if(ids.isEmpty()) return true;
 
-        logger.debug("[REPOSITORY] [GENRE] [DELETE] [BY IDS] genres ids: {}", ids);
+        logger.debug("[REPOSITORY] [GENRE] [DELETE] [BY IDS] genres ids: {}", ids.size());
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -365,7 +369,7 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         if(ids.isEmpty()) return List.of();
 
-        logger.debug("[REPOSITORY] [GENRE] [FIND] [BY IDS] ids: {}", ids);
+        logger.debug("[REPOSITORY] [GENRE] [FIND] [BY IDS] ids: {}", ids.size());
 
         List<ObjectId> oIds = ids.stream().map(ObjectId::new).toList();
 
@@ -406,7 +410,7 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         if (GenreNames.isEmpty()) return List.of();
 
-        logger.debug("[REPOSITORY] [GENRE] [FIND] [BY NAME] names: {}", GenreNames);
+        logger.debug("[REPOSITORY] [GENRE] [FIND] [BY NAME] names: {}", GenreNames.size());
 
         return this.mongoCollection
                 .find(Filters.in("name", GenreNames))
