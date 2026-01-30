@@ -62,7 +62,7 @@ public class BookController {
     }
 
     @PostMapping(value = "upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Import book", description= "Uploads a file containing books in NDJSON format.")
+    @Operation(summary = "Import book (Admin only)", description= "Uploads a file containing books in NDJSON format.")
     public ResponseEntity<String> importBooks(
             @PathVariable String idSource,
             @RequestHeader("Authorization") String token,
@@ -97,7 +97,7 @@ public class BookController {
     }
 
     @PostMapping(value = "upload/similarity/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Import book", description= "Uploads a file containing books in NDJSON format.")
+    @Operation(summary = "Import book (Admin only)", description= "Uploads a file containing books in NDJSON format.")
     public ResponseEntity<String> importBooksSimilarity(
             @PathVariable String idSource,
             @RequestHeader("Authorization") String token,
@@ -132,7 +132,7 @@ public class BookController {
     }
 
     @PostMapping(value = "upload/genre/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Import book", description= "Uploads a file containing books genre in NDJSON format.")
+    @Operation(summary = "Import book genre (Admin only)", description= "Uploads a file containing books genre in NDJSON format.")
     public ResponseEntity<String> importBooksGenre(
             @PathVariable String idSource,
             @RequestHeader("Authorization") String token,
@@ -199,7 +199,7 @@ public class BookController {
     }
 
     @PostMapping("/{idBook}/reviews")
-    @Operation(summary = "add book reviews")
+    @Operation(summary = "add a review to a book (Reader only)", description = "Add a review to a book.")
     public ResponseEntity<ReviewResponse> addBookReview(
             @PathVariable String idBook,
             @RequestBody ReviewCreateRequest request,
@@ -207,7 +207,7 @@ public class BookController {
     ){
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.Admin) {
+        if(userToken == null || userToken.getRole() != Role.Reader) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -215,8 +215,8 @@ public class BookController {
                 .bookId(idBook)
                 .rating(request.getRating())
                 .comment(request.getComment())
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         ReviewResponse result = this.reviewService.saveReview(command);
 
@@ -224,7 +224,7 @@ public class BookController {
     }
 
     @DeleteMapping("/{idBook}")
-    @Operation(summary = "Delete Book")
+    @Operation(summary = "Delete Book (Admin only)")
     public ResponseEntity<String> deleteBookById(@PathVariable String idBook, @RequestHeader("Authorization") String token){
         UserToken userToken = authService.getUserToken(token);
 
@@ -234,25 +234,26 @@ public class BookController {
 
         BookDeleteCommand command = BookDeleteCommand.builder()
                 .id(idBook)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
         boolean result = this.bookService.deleteBookById(command);
-        return ResponseEntity.ok(result ? "Book deleted sucessfully" : "Error deleting book");
 
+        return ResponseEntity.ok(result ? "Book deleted sucessfully" : "Error deleting book");
     }
 
     @PostMapping("/delete")
-    @Operation(summary = "Delete Multiple Book")
+    @Operation(summary = "Delete Multiple Book (Admin only)")
     public ResponseEntity<String> deleteMultipleBook(@RequestBody List<ObjectId> ids, @RequestHeader("Authorization") String token){
         UserToken userToken = authService.getUserToken(token);
+
         if(userToken == null || userToken.getRole() != Role.Admin){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         BookDeleteManyCommand command = BookDeleteManyCommand.builder()
                 .ids(ids)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         boolean result = this.bookService.deleteManyBooks(command);
 
@@ -260,9 +261,10 @@ public class BookController {
     }
 
     @PostMapping
-    @Operation(summary = "Create book")
+    @Operation(summary = "Create book (Admin only)")
     public ResponseEntity<BookResponse> createBook(@RequestBody BookCreateRequest request, @RequestHeader("Authorization") String token){
         UserToken userToken = authService.getUserToken(token);
+
         if(userToken == null || userToken.getRole() != Role.Admin){
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -363,7 +365,7 @@ public class BookController {
     }
 
     @GetMapping("/recommendation")
-    @Operation(summary = "Get recommendation books")
+    @Operation(summary = "Get recommendation books (Reader only)")
     public ResponseEntity<List<BookRecommendationResponse>> recommendationBooks(@RequestHeader("Authorization") String token, @RequestParam(required = false) Integer size) {
         UserToken userToken = authService.getUserToken(token);
 

@@ -51,7 +51,7 @@ public class GenreController {
 
 
     @PostMapping(value = "upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Import genre", description = "Uploads a file containing genres in NDJSON format.")
+    @Operation(summary = "Import genre (Admin only)", description = "Uploads a file containing genres in NDJSON format.")
     public ResponseEntity<String> importGenres(
             @PathVariable String idSource,
             @RequestHeader("Authorization") String token,
@@ -98,7 +98,7 @@ public class GenreController {
     }
 
     @DeleteMapping("/{idGenre}")
-    @Operation(summary = "Delete genre information")
+    @Operation(summary = "Delete genre information (Admin only)")
     public ResponseEntity<String> deleteGenreById(@PathVariable String idGenre, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -108,8 +108,8 @@ public class GenreController {
 
         GenreDeleteCommand command = GenreDeleteCommand.builder()
                 .id(idGenre)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         boolean result = this.genreService.deleteGenreById(command);
 
@@ -117,7 +117,7 @@ public class GenreController {
     }
 
     @PostMapping("/delete")
-    @Operation(summary = "Delete multi genre")
+    @Operation(summary = "Delete multi genre (Admin only)")
     public ResponseEntity<String> deleteAllGenres(@RequestBody List<String> ids, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -127,8 +127,8 @@ public class GenreController {
 
         GenreIdsDeleteCommand command = GenreIdsDeleteCommand.builder()
                 .ids(ids)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         boolean result = this.genreService.deleteAllGenres(command);
 
@@ -136,7 +136,7 @@ public class GenreController {
     }
 
     @PostMapping
-    @Operation(summary = "Create genre")
+    @Operation(summary = "Create genre (Admin only)")
     public ResponseEntity<GenreResponse> createGenre(@RequestBody GenreCreateRequest request, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -146,6 +146,7 @@ public class GenreController {
 
         GenreCreateCommand command = GenreCreateCommand.builder()
                 .name(request.getName())
+                .userToken(userToken)
                 .build();
 
         GenreResponse response = this.genreService.saveGenre(command);

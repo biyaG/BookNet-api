@@ -46,7 +46,7 @@ public class UserController {
 
 
     @GetMapping("/migrate")
-    @Operation(summary = "Migrate user from mongodb to neo4j")
+    @Operation(summary = "Migrate user from mongodb to neo4j (Admin only)", description = "Migrate all users (Reader and Reviewer) from mongodb to neo4j.")
     public ResponseEntity<String> migrateUsers(@RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -61,7 +61,7 @@ public class UserController {
 
 
     @GetMapping("/migrate/reader")
-    @Operation(summary = "Migrate reader from mongodb to neo4j")
+    @Operation(summary = "Migrate reader from mongodb to neo4j (Admin only)", description = "Migrate all readers from mongodb to neo4j.")
     public ResponseEntity<String> migrateReader(@RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -76,7 +76,7 @@ public class UserController {
 
 
     @GetMapping("/migrate/reviewer")
-    @Operation(summary = "Migrate reviewer from mongodb to neo4j")
+    @Operation(summary = "Migrate reviewer from mongodb to neo4j (Admin only)", description = "Migrate all reviewers from mongodb to neo4j.")
     public ResponseEntity<String> migrateReviewer(@RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -91,7 +91,7 @@ public class UserController {
 
 
     @GetMapping("/admin")
-    @Operation(summary = "Get list of admin")
+    @Operation(summary = "Get list of admin (Admin only)")
     public ResponseEntity<PageResult<AdminResponse>> getAdminUser(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
@@ -110,8 +110,8 @@ public class UserController {
 
         AdminListCommand command = AdminListCommand.builder()
                 .pagination(paginationRequest)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         PageResult<AdminResponse> response = this.userService.list(command);
 
@@ -119,7 +119,7 @@ public class UserController {
     }
 
     @GetMapping("/reader")
-    @Operation(summary = "Get list of reader")
+    @Operation(summary = "Get list of reader (Admin only)")
     public ResponseEntity<PageResult<ReaderResponse>> getReaderUser(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
@@ -138,8 +138,8 @@ public class UserController {
 
         ReaderListCommand command = ReaderListCommand.builder()
                 .pagination(paginationRequest)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         PageResult<ReaderResponse> response = this.userService.list(command);
 
@@ -147,7 +147,7 @@ public class UserController {
     }
 
     @GetMapping("/reviewer")
-    @Operation(summary = "Get list of reviewer")
+    @Operation(summary = "Get list of reviewer (Admin only)")
     public ResponseEntity<PageResult<ReviewerResponse>> getReviewerUser(
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
@@ -166,8 +166,8 @@ public class UserController {
 
         ReviewerListCommand command = ReviewerListCommand.builder()
                 .pagination(paginationRequest)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         PageResult<ReviewerResponse> response = this.userService.list(command);
 
@@ -252,23 +252,5 @@ public class UserController {
 
         return ResponseEntity.ok(this.reviewService.getReviews(command));
     }
-
-
-//-> WE have to add UpdateReview for Users HERE
-//    @PostMapping("/{idUser}/updateReview")
-//    @Operation(summary = "Update user reviews")
-//    @SecurityRequirements(value = {})
-//    public ResponseEntity<PageResult<ReviewResponse>> updateUserReviews(
-//            @PathVariable String idUser,
-//            @RequestParam(required = false) Integer page,
-//            @RequestParam(required = false) Integer size
-//    ) {;
-//
-//        ReviewByReaderListCommand command = ReviewByReaderListCommand.builder()
-//                .readerId(idUser)
-//                .build();
-//
-//        return ResponseEntity.ok(this.reviewService.updateReview());
-//    }
 
 }

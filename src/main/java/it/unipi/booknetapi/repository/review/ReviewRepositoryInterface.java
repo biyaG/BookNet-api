@@ -15,7 +15,7 @@ public interface ReviewRepositoryInterface {
     List<Review> insertFromGoodReads(List<Review> reviews);
     void importGoodReadsReviewsRead(List<ReviewerRead> reads);
 
-    boolean updateReview(String idReview, Float rating, String comment);
+    boolean updateReview(String idReview, Integer rating, String comment);
 
     boolean delete(String idReview);
     boolean delete(List<String> idReviews);

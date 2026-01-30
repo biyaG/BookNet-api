@@ -54,7 +54,7 @@ public class AuthorController {
 
 
     @PostMapping(value = "upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Import author", description = "Uploads a file containing authors in NDJSON format.")
+    @Operation(summary = "Import author (Admin only)", description = "Uploads a file containing authors in NDJSON format.")
     public ResponseEntity<String> importAuthors(
             @PathVariable String idSource,
             @RequestHeader("Authorization") String token,
@@ -90,7 +90,7 @@ public class AuthorController {
 
 
     @GetMapping("/migrate")
-    @Operation(summary = "Migrate author from mongodb to neo4j")
+    @Operation(summary = "Migrate author from mongodb to neo4j (Admin only)", description = "Migrates all authors from mongodb to neo4j.")
     public ResponseEntity<String> migrateAuthor(@RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -115,7 +115,7 @@ public class AuthorController {
     }
 
     @DeleteMapping("/{idAuthor}")
-    @Operation(summary = "Delete author")
+    @Operation(summary = "Delete author (Admin only)")
     public ResponseEntity<String> deleteAuthorById(@PathVariable String idAuthor, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -134,7 +134,7 @@ public class AuthorController {
     }
 
     @PostMapping("/delete")
-    @Operation(summary = "Delete multi author")
+    @Operation(summary = "Delete multi author (Admin only)")
     public ResponseEntity<String> deleteMultiAuthors(@RequestBody List<String> ids, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 
@@ -153,7 +153,7 @@ public class AuthorController {
     }
 
     @PostMapping
-    @Operation(summary = "Create author")
+    @Operation(summary = "Create author (Admin only)")
     public ResponseEntity<AuthorResponse> createAuthor(@RequestBody AuthorCreateRequest request, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 

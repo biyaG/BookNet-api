@@ -35,7 +35,7 @@ public class NotificationController {
 
 
     @GetMapping
-    @Operation(summary = "Get all notifications")
+    @Operation(summary = "Get all notifications (Admin only)")
     public ResponseEntity<PageResult<NotificationResponse>> getNotifications(
             @RequestHeader("Authorization") String token,
             @RequestParam(required = false) Integer page,
@@ -68,7 +68,7 @@ public class NotificationController {
     }
 
     @GetMapping("/latest")
-    @Operation(summary = "Get latest notifications")
+    @Operation(summary = "Get latest notifications (Admin only)")
     public ResponseEntity<List<NotificationResponse>> getLatestNotifications(@RequestHeader("Authorization") String token) {
         UserToken userToken = this.authService.getUserToken(token);
 
@@ -88,7 +88,7 @@ public class NotificationController {
     }
 
     @GetMapping("/{idNotification}")
-    @Operation(summary = "Get Notification information")
+    @Operation(summary = "Get Notification information (Admin only)")
     public ResponseEntity<NotificationResponse> getNotification(
             @RequestHeader("Authorization") String token,
             @PathVariable("idNotification") String idNotification
@@ -111,7 +111,7 @@ public class NotificationController {
     }
 
     @DeleteMapping("/{idNotification}")
-    @Operation(summary = "Delete Notification")
+    @Operation(summary = "Delete Notification (Admin only)")
     public ResponseEntity<String> deleteNotification(
             @RequestHeader("Authorization") String token,
             @PathVariable("idNotification") String idNotification
@@ -133,7 +133,7 @@ public class NotificationController {
     }
 
     @PostMapping("/delete")
-    @Operation(summary = "Delete multi notifications")
+    @Operation(summary = "Delete multi notifications (Admin only)")
     public ResponseEntity<String> deleteMultiNotifications(@RequestBody List<String> ids, @RequestHeader("Authorization") String token) {
         UserToken userToken = authService.getUserToken(token);
 

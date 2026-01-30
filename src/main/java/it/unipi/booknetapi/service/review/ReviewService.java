@@ -71,6 +71,19 @@ public class ReviewService {
         return new ReviewResponse(reviewSaved);
     }
 
+    public ReviewResponse updateReview(ReviewUpdateCommand command) {
+        if(!command.hasUser()) return null;
+        if(command.getId() == null || !ObjectId.isValid(command.getId())) return null;
+
+        boolean updated = this.reviewRepository.updateReview(command.getId(), command.getRating(), command.getComment());
+        if(!updated) return null;
+
+        Review review = this.reviewRepository.findById(command.getId()).orElse(null);
+        if(review == null) return null;
+
+        return new ReviewResponse(review);
+    }
+
     public ReviewResponse getReviewById(ReviewGetCommand command) {
         if(command.getId() == null) return null;
 
@@ -144,20 +157,6 @@ public class ReviewService {
                 result.getCurrentPage(),
                 result.getPageSize()
         );
-    }
-
-    public boolean updateReview(ReviewGetCommand command) {
-        if(command.getId() == null) return false;
-        if(!command.hasUser()) return false;
-
-        Review review = this.reviewRepository.findById(command.getId())
-                .orElse(null);
-
-        if(review == null) return false;
-
-        if(!Objects.equals(command.getUserToken().getIdUser(), review.getUser().getId().toHexString())) return false;
-
-        return this.reviewRepository.updateReview(review.getId().toHexString(), Float.valueOf(review.getRating()), review.getComment());
     }
 
 }

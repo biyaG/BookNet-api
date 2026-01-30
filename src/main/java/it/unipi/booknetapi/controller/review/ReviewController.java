@@ -6,11 +6,9 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.fetch.ImportDataCommand;
-import it.unipi.booknetapi.command.review.ReviewDeleteCommand;
-import it.unipi.booknetapi.command.review.ReviewGetCommand;
-import it.unipi.booknetapi.command.review.ReviewIdsDeleteCommand;
-import it.unipi.booknetapi.command.review.ReviewListCommand;
+import it.unipi.booknetapi.command.review.*;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
+import it.unipi.booknetapi.dto.review.ReviewUpdateRequest;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.fetch.ImportEntityType;
@@ -28,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/review")
@@ -53,7 +52,7 @@ public class ReviewController {
 
 
     @PostMapping(value = "upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Import reviews", description = "Uploads a file containing reviews in NDJSON format.")
+    @Operation(summary = "Import reviews (Admin only)", description = "Uploads a file containing reviews in NDJSON format.")
     public ResponseEntity<String> importAuthorsFromGoodreads(
             @PathVariable String idSource,
             @RequestHeader("Authorization") String token,
@@ -98,6 +97,42 @@ public class ReviewController {
         return ResponseEntity.ok(this.reviewService.getReviewById(command));
     }
 
+    @PostMapping("/{idReview}")
+    @Operation(summary = "Update review (Reader only)")
+    public ResponseEntity<ReviewResponse> updateReview(
+            @PathVariable String idReview,
+            @RequestBody ReviewUpdateRequest request,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        ReviewGetCommand commandGet = ReviewGetCommand.builder()
+                .id(idReview)
+                .build();
+        ReviewResponse review = this.reviewService.getReviewById(commandGet);
+
+        if(review == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+
+        if(Objects.equals(userToken.getIdUser(), review.getUser().getIdUser()))
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        ReviewUpdateCommand command = ReviewUpdateCommand.builder()
+                .id(idReview)
+                .rating(request.getRating())
+                .comment(request.getComment())
+                .userToken(userToken)
+                .build();
+
+        ReviewResponse reviewResponse = this.reviewService.updateReview(command);
+
+        if(reviewResponse == null) return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        return ResponseEntity.ok(reviewResponse);
+    }
+
     @DeleteMapping("/{idReview}")
     @Operation(summary = "Delete Review")
     public ResponseEntity<String> deleteReviewById(
@@ -106,14 +141,27 @@ public class ReviewController {
     ) {
         UserToken userToken = authService.getUserToken(token);
 
-        if(userToken == null || userToken.getRole() != Role.Admin) {
+        if(userToken == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if(userToken.getRole() != Role.Admin) {
+            ReviewGetCommand command = ReviewGetCommand.builder()
+                    .id(idReview)
+                    .build();
+
+            ReviewResponse review = this.reviewService.getReviewById(command);
+
+            if(review == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+
+            if(Objects.equals(userToken.getIdUser(), review.getUser().getIdUser()))
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         ReviewDeleteCommand command = ReviewDeleteCommand.builder()
                 .id(idReview)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         boolean result = this.reviewService.deleteReview(command);
 
@@ -121,7 +169,7 @@ public class ReviewController {
     }
 
     @PostMapping("/delete")
-    @Operation(summary = "Delete multi review")
+    @Operation(summary = "Delete multi review (Admin only)")
     public ResponseEntity<String> deleteMultiReviews(
             @RequestBody List<String> ids,
             @RequestHeader("Authorization") String token
@@ -134,8 +182,8 @@ public class ReviewController {
 
         ReviewIdsDeleteCommand command = ReviewIdsDeleteCommand.builder()
                 .ids(ids)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         boolean result = this.reviewService.deleteReview(command);
 
@@ -143,7 +191,7 @@ public class ReviewController {
     }
 
     @GetMapping
-    @Operation(summary = "Get all reviews")
+    @Operation(summary = "Get all reviews (Admin only)")
     @SecurityRequirements(value = {})
     public ResponseEntity<PageResult<ReviewResponse>> getAllReviews(
             @RequestParam(required = false) Integer page,
@@ -163,8 +211,8 @@ public class ReviewController {
 
         ReviewListCommand command = ReviewListCommand.builder()
                 .pagination(paginationRequest)
+                .userToken(userToken)
                 .build();
-        command.setUserToken(userToken);
 
         return ResponseEntity.ok(this.reviewService.getReviews(command));
     }

@@ -434,7 +434,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
      * @return true if the review was updated successfully, false otherwise
      */
     @Override
-    public boolean updateReview(String idReview, Float rating, String comment) {
+    public boolean updateReview(String idReview, Integer rating, String comment) {
         Objects.requireNonNull(idReview);
 
         Optional<Review> optReview = this.findById(idReview);
@@ -453,6 +453,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
                     if (comment != null) {
                         updateOperations.add(Updates.set("comment", comment));
                     }
+                    updateOperations.add(Updates.set("dateUpdated", new Date()));
 
                     UpdateResult updateResult = this.mongoCollection
                             .updateOne(
@@ -478,7 +479,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
         return false;
     }
 
-    private void updateReviewInNeo4j(String idReader, String idBook, Float rating) {
+    private void updateReviewInNeo4j(String idReader, String idBook, Integer rating) {
         Objects.requireNonNull(idReader);
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(rating);
@@ -488,11 +489,11 @@ public class ReviewRepository implements ReviewRepositoryInterface {
         // 2. MERGE creates the relationship 'REVIEWED' if it's missing, or matches it if it exists.
         // 3. SET updates the rating property regardless of whether the relationship was just created or already existed.
         String cypher = """
-        MATCH (r:Reader {mid: $idReader})
-        MATCH (b:Book {mid: $idBook})
-        MERGE (r)-[rel:RATED]->(b)
-        SET rel.rating = $rating
-        """;
+            MATCH (r:Reader {mid: $idReader})
+            MATCH (b:Book {mid: $idBook})
+            MERGE (r)-[rel:RATED]->(b)
+            SET rel.rating = $rating
+            """;
 
         this.registry.timer("neo4j.ops", "query", "update_review").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
