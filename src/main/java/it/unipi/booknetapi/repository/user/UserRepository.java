@@ -15,6 +15,7 @@ import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.notification.NotificationEmbed;
 import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.user.*;
+import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
 import it.unipi.booknetapi.shared.lib.database.*;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.conversions.Bson;
@@ -34,6 +35,8 @@ public class UserRepository implements UserRepositoryInterface {
 
     private static final int MAX_LAST_NOTIFICATIONS = 10;
 
+    private final Integer batchSize;
+
     private final MongoClient mongoClient;
     private final MongoCollection<User> userCollection;
     private final MongoCollection<InternalUser> internalUserCollection;
@@ -46,11 +49,13 @@ public class UserRepository implements UserRepositoryInterface {
 
 
     public UserRepository(
+            AppConfig appConfig,
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
             MeterRegistry registry
     ) {
+        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 50;
         this.mongoClient = mongoClient;
         this.userCollection = mongoDatabase.getCollection("users", User.class);
         this.internalUserCollection = mongoDatabase.getCollection("users", InternalUser.class);
@@ -166,9 +171,8 @@ public class UserRepository implements UserRepositoryInterface {
             try {
                 this.userCollection.insertMany(mongoSession, users);
 
-                List<Reader> readers = users.stream()
-                        .filter(u -> u instanceof Reader)
-                        .map(u -> (Reader) u)
+                List<T> readers = users.stream()
+                        .filter(u -> u instanceof Reader || u instanceof Reviewer)
                         .toList();
                 saveReadersToNeo4j(readers);
 
@@ -186,7 +190,7 @@ public class UserRepository implements UserRepositoryInterface {
         return List.of();
     }
 
-    private void saveReadersToNeo4j(List<Reader> users) {
+    private <T extends User> void saveReadersToNeo4j(List<T> users) {
         List<Map<String, Object>> noe4jBatch = new ArrayList<>();
 
         for(User user : users) {
@@ -1062,4 +1066,179 @@ public class UserRepository implements UserRepositoryInterface {
                 .find(Filters.in("externalId.goodReads", externUserIds))
                 .into(new ArrayList<>());
     }
+
+    /**
+     *
+     */
+    @Override
+    public void migrateReaders() {
+        logger.debug("[REPOSITORY] [USER] [MIGRATE READERS]");
+
+        long total = this.userCollection
+                .countDocuments(Filters.eq("role", Role.Reader.name()));
+
+        int totalPages = (int) Math.ceil((double) total / this.batchSize);
+
+        for(int page = 0; page < totalPages; page++) {
+            int skip = page * this.batchSize;
+            List<Reader> readers = this.readerCollection
+                    .find(Filters.eq("role", Role.Reader.name()))
+                    .skip(skip)
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            importReadersWithRelationships(readers);
+        }
+    }
+
+    private void importReadersWithRelationships(List<Reader> readers) {
+        if (readers == null || readers.isEmpty()) return;
+
+        // 1. Transform Java POJOs to Map for Neo4j
+        List<Map<String, Object>> batch = readers.stream()
+                .map(reader -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", reader.getId().toHexString());
+                    map.put("name", reader.getName());
+
+                    // A. Shelf (Books + Status + Timestamp)
+                    // We use Collections.emptyList() to ensure 'FOREACH' in Cypher doesn't break
+                    List<Map<String, Object>> shelfList = (reader.getShelf() == null) ? Collections.emptyList() :
+                            reader.getShelf().stream()
+                                    .filter(item -> item.getBook() != null && item.getBook().getId() != null)
+                                    .map(item -> {
+                                        Map<String, Object> m = new HashMap<>();
+                                        m.put("bookId", item.getBook().getId().toHexString());
+                                        m.put("title", item.getBook().getTitle());
+                                        m.put("status", item.getStatus() != null ? item.getStatus().name() : "ADDED");
+                                        m.put("ts", item.getDateAdded() != null ? item.getDateAdded().getTime() : System.currentTimeMillis());
+                                        return m;
+                                    })
+                                    .toList();
+                    map.put("shelf", shelfList);
+
+                    // B. Preferences (Authors)
+                    List<Map<String, Object>> authorList = Collections.emptyList();
+                    if (reader.getPreference() != null && reader.getPreference().getAuthors() != null) {
+                        authorList = reader.getPreference().getAuthors().stream()
+                                .filter(a -> a.getId() != null)
+                                .map(a -> Map.<String, Object>of(
+                                        "id", a.getId().toHexString(),
+                                        "name", a.getName()
+                                )).toList();
+                    }
+                    map.put("authors", authorList);
+
+                    // C. Preferences (Genres)
+                    List<Map<String, Object>> genreList = Collections.emptyList();
+                    if (reader.getPreference() != null && reader.getPreference().getGenres() != null) {
+                        genreList = reader.getPreference().getGenres().stream()
+                                .filter(g -> g.getId() != null)
+                                .map(g -> Map.<String, Object>of(
+                                        "id", g.getId().toHexString(),
+                                        "name", g.getName()
+                                )).toList();
+                    }
+                    map.put("genres", genreList);
+
+                    return map;
+                })
+                .toList();
+
+        // 2. The Cypher Query
+        String cypher = """
+            UNWIND $batch AS row
+            
+            // --- 1. Main Reader Node ---
+            MERGE (r:Reader {mid: row.id})
+            SET r.name = row.name
+    
+            // --- 2. Shelf (Books) ---
+            FOREACH (item IN row.shelf |
+                // Create Book Shell Node if missing
+                MERGE (b:Book {mid: item.bookId})
+                ON CREATE SET b.title = item.title
+            
+                // Create/Update the relationship
+                MERGE (r)-[rel:ADDED_TO_SHELF]->(b)
+                SET
+                    rel.status = item.status,
+                    rel.ts = item.ts
+            )
+    
+            // --- 3. Preferred Authors ---
+            FOREACH (auth IN row.authors |
+                MERGE (a:Author {mid: auth.id})
+                ON CREATE SET a.name = auth.name
+                MERGE (r)-[:FOLLOWS]->(a)
+            )
+    
+            // --- 4. Interested Genres ---
+            FOREACH (gen IN row.genres |
+                MERGE (g:Genre {mid: gen.id})
+                ON CREATE SET g.name = gen.name
+                MERGE (r)-[:INTERESTED_IN]->(g)
+            )
+            """;
+
+        // 3. Execute
+        this.registry.timer("neo4j.ops", "query", "import_readers_full").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(cypher, Values.parameters("batch", batch));
+                    return null;
+                });
+            }
+        });
+    }
+
+    public void migrateReviewers() {
+        logger.debug("[REPOSITORY] [USER] [MIGRATE] Reviewers");
+
+        long total = this.userCollection
+                .countDocuments(Filters.eq("role", Role.Reader.name()));
+
+        int totalPages = (int) Math.ceil((double) total / this.batchSize);
+
+        for(int page = 0; page < totalPages; page++) {
+            int skip = page * this.batchSize;
+            List<Reviewer> reviewers = this.reviewerCollection
+                    .find(Filters.eq("role", Role.Reviewer.name()))
+                    .skip(skip)
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            bulkUpsertUsers(reviewers);
+        }
+    }
+
+    private <T extends User> void bulkUpsertUsers(List<T> users) {
+        if (users == null || users.isEmpty()) return;
+
+        logger.debug("[REPOSITORY] [USER] [MIGRATE READERS] size: {}", users.size());
+
+        List<Map<String, Object>> batch = users.stream()
+                .filter(u -> u.getId() != null)
+                .map(u -> Map.<String, Object>of(
+                        "id", u.getId().toHexString(),
+                        "name", u.getName() != null ? u.getName() : ""
+                ))
+                .toList();
+
+        String query = """
+            UNWIND $batch AS row
+            MERGE (r:Reader {mid: row.id})
+            SET r.name = row.name
+            """;
+
+        this.registry.timer("neo4j.ops", "query", "upsert_readers").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(query, Values.parameters("batch", batch));
+                    return null;
+                });
+            }
+        });
+    }
+
 }

@@ -552,7 +552,6 @@ public class ImportService {
         ExternalId externalId = new ExternalId();
         externalId.setGoodReads(goodReadsUserId);
 
-        UserPreference userPreference = new UserPreference();
         Reviewer reader = new Reviewer();
         reader.setExternalId(externalId);
         reader.setName(faker.name().fullName());
@@ -585,14 +584,16 @@ public class ImportService {
                 .filter(u -> u.getExternalId() != null && u.getExternalId().getGoodReads() != null)
                 .collect(Collectors.toMap(
                         u -> u.getExternalId().getGoodReads(),
-                        u -> u
+                        u -> u,
+                        (existing, replacement) -> existing
                 ));
         mapExternIdUser.putAll(
                 insertedUsers.stream()
                         .filter(u -> u.getExternalId() != null && u.getExternalId().getGoodReads() != null)
                         .collect(Collectors.toMap(
                                 u -> u.getExternalId().getGoodReads(),
-                                u -> u
+                                u -> u,
+                                (existing, replacement) -> existing
                         ))
         );
 
@@ -616,6 +617,7 @@ public class ImportService {
         Map<String, Reviewer> mapExternIdUser = findOrGenerateReviewers(externUserIds);
 
         List<Review> reviews = new ArrayList<>(parameterFetch.getData().size());
+        List<ReviewerRead> reviewersRead = new ArrayList<>(parameterFetch.getData().size());
         for(InteractionGoodReads interactionGoodReads : parameterFetch.getData()) {
             if(mapExternIdBook.containsKey(interactionGoodReads.getBookId()) && mapExternIdUser.containsKey(interactionGoodReads.getUserId())) {
                 ExternalId externalId = ExternalId.builder()
@@ -634,10 +636,22 @@ public class ImportService {
                         .build();
 
                 reviews.add(review);
+
+                ReviewerRead read = ReviewerRead.builder()
+                        .userId(mapExternIdUser.get(interactionGoodReads.getUserId()).getId())
+                        .bookId(mapExternIdBook.get(interactionGoodReads.getBookId()).getId())
+                        .isRead(interactionGoodReads.getIsRead())
+                        .readAt(interactionGoodReads.getReadAt())
+                        .startedAt(interactionGoodReads.getStartedAt())
+                        .build();
+
+                reviewersRead.add(read);
             }
         }
 
         List<Review> reviewsSaved = this.reviewRepository.insertFromGoodReads(reviews);
+
+        this.reviewRepository.importGoodReadsReviewsRead(reviewersRead);
 
         logFetch(
                 parameterFetch,
@@ -649,8 +663,6 @@ public class ImportService {
         );
 
         logger.debug("[SERVICE] [IMPORT] [GOOD READS] [REVIEWS] Importing GoodReads reviews completed.");
-
-        // TODO: complete with import add in shelf, read book etc...
     }
 
 

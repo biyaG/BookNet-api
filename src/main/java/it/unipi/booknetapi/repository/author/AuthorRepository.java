@@ -182,25 +182,11 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
             List<ObjectId> ids = bulkUpset(importedAuthorsBatch);
 
-            List<Map<String, Object>> neo4jBatch = new ArrayList<>();
-
             List<Author> authors = this.mongoCollection.find(Filters.in("_id", ids))
                     .projection(Projections.include("_id", "name")) // Optimize: fetch only needed fields
                     .into(new ArrayList<>());
 
-            authors.forEach(
-                    author -> {
-                        // Map MongoDB Author POJO to Neo4j Map
-                        Map<String, Object> map = new HashMap<>();
-                        map.put("id", author.getId().toHexString()); // The crucial MongoDB ID
-                        map.put("name", author.getName());
-                        neo4jBatch.add(map);
-                    }
-            );
-
-            if (!neo4jBatch.isEmpty()) {
-                bulkUpdateAuthorsInNeo4j(neo4jBatch);
-            }
+            bulkUpdateAuthorsInNeo4j(authors);
 
             result.addAll(authors);
         }
@@ -261,8 +247,20 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     }
 
     // In your Neo4j Service or Repository
-    private void bulkUpdateAuthorsInNeo4j(List<Map<String, Object>> authorsBatch) {
-        logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] [NEO4J] Importing {} authors", authorsBatch.size());
+    private void bulkUpdateAuthorsInNeo4j(List<Author> authors) {
+        logger.debug("[REPOSITORY] [AUTHOR] [IMPORT] [NEO4J] Importing {} authors", authors.size());
+
+        List<Map<String, Object>> authorsBatch = new ArrayList<>();
+
+        authors.forEach(
+                author -> {
+                    // Map MongoDB Author POJO to Neo4j Map
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", author.getId().toHexString());
+                    map.put("name", author.getName());
+                    authorsBatch.add(map);
+                }
+        );
 
         // Cypher:
         // 1. UNWIND expands the list into rows.
@@ -793,6 +791,30 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         """;
 
         return handleFindFromNeo4J(query, limit);
+    }
+
+    /**
+     *
+     */
+    @Override
+    public void migrate() {
+        logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE]");
+
+        long total = this.mongoCollection
+                .countDocuments();
+
+        int totalPages = (int) Math.ceil((double) total / this.batchSize);
+
+        for(int page = 0; page < totalPages; page++) {
+            int skip = page * this.batchSize;
+            List<Author> authors = this.mongoCollection
+                    .find()
+                    .skip(skip)
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            bulkUpdateAuthorsInNeo4j(authors);
+        }
     }
 
 }

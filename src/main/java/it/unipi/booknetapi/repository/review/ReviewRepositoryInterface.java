@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.repository.review;
 
 import it.unipi.booknetapi.model.review.Review;
+import it.unipi.booknetapi.model.user.ReviewerRead;
 import it.unipi.booknetapi.shared.model.PageResult;
 
 import java.util.List;
@@ -12,6 +13,7 @@ public interface ReviewRepositoryInterface {
     List<Review> insert(List<Review> reviews);
 
     List<Review> insertFromGoodReads(List<Review> reviews);
+    void importGoodReadsReviewsRead(List<ReviewerRead> reads);
 
     boolean updateReview(String idReview, Float rating, String comment);
 

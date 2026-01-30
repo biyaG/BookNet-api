@@ -866,7 +866,7 @@ public class BookRepository implements BookRepositoryInterface {
                                     cypher,
                                     Values.parameters(
                                             "bookId", idBook,
-                                            "genres", genres
+                                            "genres", genreListParams
                                     )
                             );
                             return null;
@@ -1016,7 +1016,7 @@ public class BookRepository implements BookRepositoryInterface {
 
         if(idBooks.isEmpty()) return new PageResult<>(List.of(), total, page, size);
 
-        List<Book> books = this.mongoCollection.find(Filters.in("_id", idBooks))
+        List<Book> books = this.mongoCollection.find(Filters.in("_id", idBooks.stream().map(ObjectId::new).toList()))
                 .projection(Projections.include(BookEmbed.FIELDS))
                 .into(new ArrayList<>());
 
@@ -1033,7 +1033,7 @@ public class BookRepository implements BookRepositoryInterface {
 
         String query = """
             MATCH (b:Book)-[:IN_GENRE]->(g:Genre)
-            WHERE g.mid = genreId
+            WHERE g.mid = $genreId
             RETURN
                 b.mid AS id,
                 b.title AS title
@@ -1406,6 +1406,110 @@ public class BookRepository implements BookRepositoryInterface {
         });
 
         return Collections.emptyList();
+    }
+
+
+    /**
+     *
+     */
+    @Override
+    public void migrate() {
+        logger.debug("[REPOSITORY] [BOOK] [MIGRATE]");
+
+        long total = this.mongoCollection
+                .countDocuments();
+
+        int totalPages = (int) Math.ceil((double) total / this.batchSize);
+
+        for(int page = 0; page < totalPages; page++) {
+            int skip = page * this.batchSize;
+            List<Book> books = this.mongoCollection
+                    .find()
+                    .skip(skip)
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            importBooksWithRelationships(books);
+        }
+    }
+
+    private void importBooksWithRelationships(List<Book> books) {
+        if (books == null || books.isEmpty()) return;
+
+        List<Map<String, Object>> batch = books.stream()
+                .map(book -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", book.getId().toHexString());
+                    map.put("isbn", book.getIsbn());
+                    map.put("isbn13", book.getIsbn13());
+                    map.put("title", book.getTitle());
+
+                    // Nested Lists (handle nulls safely)
+                    map.put("authors", book.getAuthors() == null ? Collections.emptyList() :
+                            book.getAuthors().stream().map(a -> Map.of(
+                                    "id", a.getId().toHexString(),
+                                    "name", a.getName()
+                            )).toList());
+
+                    map.put("genres", book.getGenres() == null ? Collections.emptyList() :
+                            book.getGenres().stream().map(g -> Map.of(
+                                    "id", g.getId().toHexString(),
+                                    "name", g.getName()
+                            )).toList());
+
+                    map.put("similarBooks", book.getSimilarBooks() == null ? Collections.emptyList() :
+                            book.getSimilarBooks().stream().map(s -> Map.of(
+                                    "id", s.getId().toHexString(),
+                                    "title", s.getTitle()
+                            )).toList());
+
+                    return map;
+                })
+                .toList();
+
+        String cypher = """
+            UNWIND $batch AS row
+            
+            // --- Main Book Node ---
+            MERGE (b:Book {mid: row.id})
+            SET
+                b.isbn = row.isbn,
+                b.isbn13 = row.isbn13,
+                b.title = row.title
+    
+            // --- Authors ---
+            // We use FOREACH to handle the sub-list without breaking the row context
+            FOREACH (auth IN row.authors |
+                MERGE (a:Author {mid: auth.id})
+                ON CREATE SET a.name = auth.name
+                MERGE (b)-[:WRITTEN_BY]->(a)
+            )
+    
+            // --- Genres ---
+            FOREACH (gen IN row.genres |
+                MERGE (g:Genre {mid: gen.id})
+                ON CREATE SET g.name = gen.name
+                MERGE (b)-[:IN_GENRE]->(g)
+            )
+    
+            // --- Similar Books ---
+            FOREACH (sim IN row.similarBooks |
+                // Create the 'other' book if it doesn't exist (Shell Node)
+                MERGE (s:Book {mid: sim.id})
+                // Only set the title if we are creating it fresh (don't overwrite full data if it exists)
+                ON CREATE SET s.title = sim.title
+                MERGE (b)-[:SIMILAR_TO]->(s)
+            )
+            """;
+
+        this.registry.timer("neo4j.ops", "query", "import_books_full").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(cypher, Values.parameters("batch", batch));
+                    return null;
+                });
+            }
+        });
     }
 
 }

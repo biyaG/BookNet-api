@@ -5,7 +5,6 @@ import it.unipi.booknetapi.model.notification.NotificationEmbed;
 import it.unipi.booknetapi.model.review.Review;
 import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.shared.model.PageResult;
-import org.bson.types.ObjectId;
 
 import java.util.List;
 import java.util.Optional;
@@ -46,4 +45,8 @@ public interface UserRepositoryInterface {
     PageResult<Reviewer> findAllReviewer(int page, int size);
 
     List<Reviewer> findByGoodReadsExternIds(List<String> externUserIds);
+
+    void migrateReaders();
+    void migrateReviewers();
+
 }

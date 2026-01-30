@@ -11,6 +11,7 @@ import com.mongodb.client.result.InsertOneResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.model.genre.Genre;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
+import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
@@ -29,6 +30,8 @@ public class GenreRepository implements GenreRepositoryInterface {
 
     Logger logger = LoggerFactory.getLogger(GenreRepository.class);
 
+    private final Integer batchSize;
+
     private final MongoClient mongoClient;
     private final MongoCollection<Genre> mongoCollection;
     private final Neo4jManager neo4jManager;
@@ -36,11 +39,13 @@ public class GenreRepository implements GenreRepositoryInterface {
 
 
     public GenreRepository(
+            AppConfig appConfig,
             MongoClient mongoClient,
             MongoDatabase mongoDatabase,
             Neo4jManager neo4jManager,
             MeterRegistry registry
     ) {
+        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 100;
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("genres", Genre.class);
         this.neo4jManager = neo4jManager;
@@ -436,4 +441,29 @@ public class GenreRepository implements GenreRepositoryInterface {
 
         return new PageResult<>(genres, total, page, size);
     }
+
+    /**
+     *
+     */
+    @Override
+    public void migrate() {
+        logger.debug("[REPOSITORY] [GENRE] [MIGRATE]");
+
+        long total = this.mongoCollection
+                .countDocuments();
+
+        int totalPages = (int) Math.ceil((double) total / this.batchSize);
+
+        for(int page = 0; page < totalPages; page++) {
+            int skip = page * this.batchSize;
+            List<Genre> genres = this.mongoCollection
+                    .find()
+                    .skip(skip)
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            saveGenresInNeo4j(genres);
+        }
+    }
+
 }

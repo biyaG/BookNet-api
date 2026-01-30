@@ -51,4 +51,7 @@ public interface BookRepositoryInterface {
     List<BookRecommendation> findPopularBooksByRating(Long dayAgo, int limit);
     List<BookRecommendation> findPopularBooksByShelf(int limit);
     List<BookRecommendation> findCollaborativeRecommendationsBooks(String idUser, int limit);
+
+    void migrate();
+
 }

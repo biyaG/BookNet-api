@@ -131,6 +131,41 @@ public class BookController {
         return ResponseEntity.ok(this.importService.importData(command));
     }
 
+    @PostMapping(value = "upload/genre/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Import book", description= "Uploads a file containing books genre in NDJSON format.")
+    public ResponseEntity<String> importBooksGenre(
+            @PathVariable String idSource,
+            @RequestHeader("Authorization") String token,
+            @Parameter(
+                    description = "The NDJSON file to upload",
+                    content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
+            )
+            @RequestParam("file") MultipartFile file
+    ){
+        UserToken userToken = this.authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if(file.isEmpty()){
+            return ResponseEntity.badRequest().body("File is empty");
+        }
+
+        Source source = this.sourceService.getEnumSource(idSource);
+
+        if(source == null) return ResponseEntity.badRequest().body("Invalid source");
+
+        ImportDataCommand command = ImportDataCommand.builder()
+                .source(source)
+                .importEntityType(ImportEntityType.BOOK_GENRE)
+                .file(file)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.importService.importData(command));
+    }
+
     @GetMapping("/{idBook}")
     @Operation(summary = "Get book Information")
     @SecurityRequirements(value = {})

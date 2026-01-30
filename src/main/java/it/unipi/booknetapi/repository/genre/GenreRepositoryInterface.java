@@ -26,4 +26,6 @@ public interface GenreRepositoryInterface {
 
     PageResult<Genre> search(String name, int page, int size);
 
+    void migrate();
+
 }

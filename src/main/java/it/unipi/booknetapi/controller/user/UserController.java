@@ -45,6 +45,51 @@ public class UserController {
     }
 
 
+    @GetMapping("/migrate")
+    @Operation(summary = "Migrate user from mongodb to neo4j")
+    public ResponseEntity<String> migrateUsers(@RequestHeader("Authorization") String token) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        this.userService.migrate();
+
+        return ResponseEntity.ok("Starting migration");
+    }
+
+
+    @GetMapping("/migrate/reader")
+    @Operation(summary = "Migrate reader from mongodb to neo4j")
+    public ResponseEntity<String> migrateReader(@RequestHeader("Authorization") String token) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        this.userService.migrateReaders();
+
+        return ResponseEntity.ok("Starting migration");
+    }
+
+
+    @GetMapping("/migrate/reviewer")
+    @Operation(summary = "Migrate reviewer from mongodb to neo4j")
+    public ResponseEntity<String> migrateReviewer(@RequestHeader("Authorization") String token) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        this.userService.migrateReviewers();
+
+        return ResponseEntity.ok("Starting migration");
+    }
+
+
     @GetMapping("/admin")
     @Operation(summary = "Get list of admin")
     public ResponseEntity<PageResult<AdminResponse>> getAdminUser(

@@ -94,4 +94,19 @@ public class UserService {
         );
     }
 
+    public void migrate() {
+        migrateReaders();
+        migrateReviewers();
+    }
+
+    public void migrateReaders() {
+        Thread thread = new Thread(this.userRepository::migrateReaders);
+        thread.start();
+    }
+
+    public void migrateReviewers() {
+        Thread thread = new Thread(this.userRepository::migrateReviewers);
+        thread.start();
+    }
+
 }

@@ -45,4 +45,7 @@ public interface AuthorRepositoryInterface {
     List<AuthorStats> findMostWrittenBooksAuthors(int limit);
     List<AuthorStats> findMostFollowedAuthors(int limit);
     List<AuthorStats> findMostReadAuthors(int limit);
+
+    void migrate();
+
 }

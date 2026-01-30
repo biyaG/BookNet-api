@@ -13,6 +13,8 @@ import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
 import it.unipi.booknetapi.model.review.Review;
+import it.unipi.booknetapi.model.user.BookShelfStatus;
+import it.unipi.booknetapi.model.user.ReviewerRead;
 import it.unipi.booknetapi.shared.lib.configuration.AppConfig;
 import it.unipi.booknetapi.shared.lib.database.Neo4jManager;
 import it.unipi.booknetapi.shared.model.PageResult;
@@ -20,6 +22,7 @@ import it.unipi.booknetapi.shared.model.Source;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
@@ -250,7 +253,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
     }
 
     private List<ObjectId> bulkUpsetGoodReads(List<Review> reviews) {
-        logger.debug("[REPOSITORY] [REVIEW] [IMPORT] [MONGODB] Importing {} authors from GoodReads", reviews.size());
+        logger.debug("[REPOSITORY] [REVIEW] [IMPORT] [MONGODB] Importing {} reviews from GoodReads", reviews.size());
 
         List<WriteModel<Review>> writes = new ArrayList<>();
 
@@ -303,18 +306,19 @@ public class ReviewRepository implements ReviewRepositoryInterface {
             return;
         }
 
-        // Convert List<Review> to List<Map> for the Neo4j Driver
-        // We filter out incomplete objects to avoid NullPointerExceptions during mapping
+        // 1. Prepare Batch Data
         List<Map<String, Object>> batchData = reviews.stream()
                 .filter(r -> r.getUser() != null && r.getUser().getId() != null && r.getBookId() != null)
                 .filter(r -> r.getRating() != null)
                 .map(r -> {
                     Map<String, Object> map = new HashMap<>();
                     map.put("userId", r.getUser().getId().toHexString());
+                    // Add the user name to the map (handle nulls safely)
+                    map.put("userName", r.getUser().getName() != null ? r.getUser().getName() : "");
+
                     map.put("bookId", r.getBookId().toHexString());
                     map.put("rating", r.getRating());
 
-                    // Handle Date -> ZonedDateTime conversion safely
                     if (r.getDateAdded() != null) {
                         map.put("ts", r.getDateAdded().toInstant().atZone(ZoneId.systemDefault()));
                     } else {
@@ -331,28 +335,90 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
                 session.executeWrite(tx -> {
                     String cypher = """
-                    // Unwind expands the list into individual rows
-                    UNWIND $batch AS item
-                    
-                    // 2. Try to find the Reader AND the Book
-                    // If either MATCH fails, this specific 'item' (row) is dropped
-                    // and the query moves to the next item automatically.
-                    MATCH (r:Reader {mid: item.userId})
-                    MATCH (b:Book {mid: item.bookId})
-                    
-                    // 3. Create/Merge the relationship only if MATCH succeeded
-                    MERGE (r)-[rel:RATED]->(b)
-                    
-                    // 4. Set properties
-                    SET rel.rating = item.rating,
-                        rel.ts = item.ts
-                    """;
+                        UNWIND $batch AS item
+                        
+                        // 2. Ensure Reader exists (Merge) and update Name
+                        MERGE (r:Reader {mid: item.userId})
+                        SET r.name = item.userName
+                        
+                        // 3. Match the Book
+                        // We use MATCH here because we typically don't want to create a 'Ghost Book'
+                        // just because of a review. If the book is missing, we skip the review.
+                        MATCH (b:Book {mid: item.bookId})
+                        
+                        // 4. Create/Update Relationship
+                        MERGE (r)-[rel:RATED]->(b)
+                        SET rel.rating = item.rating,
+                            rel.ts = item.ts
+                        """;
 
                     tx.run(cypher, Map.of("batch", batchData));
                     return null;
                 });
             }
         });
+    }
+
+    /**
+     * @param reads
+     */
+    @Override
+    public void importGoodReadsReviewsRead(List<ReviewerRead> reads) {
+
+        if (reads == null || reads.isEmpty()) return;
+
+        logger.debug("[REPOSITORY] [REVIEW] [INSERT RELATIONSHIPS] [FROM GOODREADS] Inserting reads: {}", reads.size());
+
+        // Prepare Batch: Calculate Status and Timestamp in Java
+        List<Map<String, Object>> batch = reads.stream()
+                .filter(r -> r.getUserId() != null && r.getBookId() != null)
+                .map(r -> {
+                    // Logic: isRead null/false -> READING, true -> FINISHED
+                    boolean isFinished = Boolean.TRUE.equals(r.getIsRead());
+                    String status = isFinished ? BookShelfStatus.FINISHED.name() : BookShelfStatus.READING.name();
+
+                    // Logic: Use readAt if finished, otherwise startedAt. Fallback to now.
+                    Date date = isFinished ? r.getReadAt() : r.getStartedAt();
+                    long ts = (date != null) ? date.getTime() : System.currentTimeMillis();
+
+                    return Map.<String, Object>of(
+                            "uid", r.getUserId().toHexString(),
+                            "bid", r.getBookId().toHexString(),
+                            "status", status,
+                            "ts", ts
+                    );
+                })
+                .toList();
+
+        String cypher = """
+            UNWIND $batch AS row
+            
+            // Ensure Nodes Exist (Shell Node Pattern)
+            MERGE (r:Reader {mid: row.uid})
+            MERGE (b:Book {mid: row.bid})
+            
+            // Create/Update Relationship
+            MERGE (r)-[rel:ADDED_TO_SHELF]->(b)
+            SET
+                rel.status = row.status,
+                rel.ts = row.ts
+            """;
+
+        for (int i=0; i<batch.size(); i+=this.batchSize) {
+            int endIndex = Math.min(i + batchSize, batch.size());
+
+            List<Map<String, Object>> batchData = batch.subList(i, endIndex);
+
+            this.registry.timer("neo4j.ops", "query", "import_reads").record(() -> {
+                try (Session session = this.neo4jManager.getDriver().session()) {
+                    session.executeWrite(tx -> {
+                        tx.run(cypher, Values.parameters("batch", batchData));
+                        return null;
+                    });
+                }
+            });
+        }
+
     }
 
     /**
