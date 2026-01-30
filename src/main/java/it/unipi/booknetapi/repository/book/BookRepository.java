@@ -1205,7 +1205,7 @@ public class BookRepository implements BookRepositoryInterface {
         MATCH (b:Book)
         
         // Exclude books I have already interacted with (Read or Rated)
-        WHERE NOT (me)-[:RATER|ADDED_TO_SHELF]->(b)
+        WHERE NOT (me)-[:RATED|ADDED_TO_SHELF]->(b)
         
         RETURN
             b.mid AS id,
@@ -1241,7 +1241,7 @@ public class BookRepository implements BookRepositoryInterface {
         if(limit < 1) limit = 20;
 
         String query = """
-            MATCH (b:Book)<-[r:RATER]-(:Reader)
+            MATCH (b:Book)<-[r:RATED]-(:Reader)
             
             // 1. Aggregate: Calculate Count AND Average for each book
             WITH b, COUNT(r) AS score, AVG(r.rating) AS avgRating
@@ -1281,7 +1281,7 @@ public class BookRepository implements BookRepositoryInterface {
         long thirtyDaysAgo = System.currentTimeMillis() - (dayAgo * 24 * 60 * 60 * 1000);
 
         String query = """
-            MATCH (b:Book)<-[r:RATER]-(:Reader)
+            MATCH (b:Book)<-[r:RATED]-(:Reader)
             
             WHERE r.ts >= $cutoff
             
@@ -1366,23 +1366,23 @@ public class BookRepository implements BookRepositoryInterface {
             MATCH (me)-[myRel]->(sharedNode)<-[peerRel]-(peer:Reader)
             WHERE me <> peer
             AND (
-                (TYPE(myRel) = 'RATER' AND TYPE(peerRel) = 'RATER' AND myRel.rating >= 4 AND peerRel.rating >= 4) OR
+                (TYPE(myRel) = 'RATED' AND TYPE(peerRel) = 'RATED' AND myRel.rating >= 4 AND peerRel.rating >= 4) OR
                 (TYPE(myRel) = 'ADDED_TO_SHELF' AND TYPE(peerRel) = 'ADDED_TO_SHELF' AND myRel.status = 'Read' AND peerRel.status = 'Read') OR
                 (TYPE(myRel) IN ['FOLLOWS', 'INTERESTED_IN'] AND TYPE(peerRel) IN ['FOLLOWS', 'INTERESTED_IN'])
             )
     
             WITH me, peer,
                  SUM(CASE
-                    WHEN TYPE(myRel) = 'RATER' THEN 5
+                    WHEN TYPE(myRel) = 'RATED' THEN 5
                     WHEN TYPE(myRel) = 'ADDED_TO_SHELF' THEN 3
                     ELSE 1
                  END) AS similarityScore
             ORDER BY similarityScore DESC
             LIMIT 50
     
-            MATCH (peer)-[r:RATER|ADDED_TO_SHELF]->(rec:Book)
-            WHERE ((TYPE(r) = 'RATER' AND r.rating >= 4) OR (TYPE(r) = 'ADDED_TO_SHELF' AND r.status = 'Read'))
-            AND NOT (me)-[:RATER|ADDED_TO_SHELF]->(rec)
+            MATCH (peer)-[r:RATED|ADDED_TO_SHELF]->(rec:Book)
+            WHERE ((TYPE(r) = 'RATED' AND r.rating >= 4) OR (TYPE(r) = 'ADDED_TO_SHELF' AND r.status = 'Read'))
+            AND NOT (me)-[:RATED|ADDED_TO_SHELF]->(rec)
     
             RETURN
                 rec.mid AS id,

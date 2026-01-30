@@ -221,7 +221,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
                 .filter(
                         r -> r.getBookId() != null
                                 && r.getUser() != null && r.getUser().getId() != null
-                                && (r.getRating() != null || r.getComment() != null)
+                                && ((r.getRating() != null && r.getRating() > 0) || r.getComment() != null)
                 ).collect(Collectors.toList());
 
         if (reviews.isEmpty()) {
@@ -265,6 +265,9 @@ public class ReviewRepository implements ReviewRepositoryInterface {
                         Filters.eq("externalId.goodReads", goodReadsId),
 
                         Updates.combine(
+                                Updates.set("bookId", review.getBookId()),
+                                Updates.set("user", review.getUser()),
+
                                 Updates.set("rating", review.getRating()),
                                 Updates.set("comment", review.getComment()),
                                 Updates.set("dateAdded", review.getDateAdded()),
@@ -285,10 +288,10 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
             List<BulkWriteUpsert> inserts = result.getUpserts();
 
-            List<ObjectId> objectIds = new ArrayList<>();
-            for (BulkWriteUpsert insert : inserts) {
-                objectIds.add(insert.getId().asObjectId().getValue());
-            }
+            List<ObjectId> objectIds = inserts.stream()
+                    .map(insert -> insert.getId().asObjectId().getValue())
+                    .toList();
+
             logger.debug("[REPOSITORY] [REVIEW] [IMPORT] [MONGODB] writes {} reviews", objectIds.size());
 
             return objectIds;
@@ -306,14 +309,15 @@ public class ReviewRepository implements ReviewRepositoryInterface {
             return;
         }
 
-        // 1. Prepare Batch Data
+        logger.debug("[REPOSITORY] [REVIEW] [IMPORT] [NEO4J] Importing {} reviews from GoodReads", reviews.size());
+
         List<Map<String, Object>> batchData = reviews.stream()
                 .filter(r -> r.getUser() != null && r.getUser().getId() != null && r.getBookId() != null)
                 .filter(r -> r.getRating() != null)
                 .map(r -> {
                     Map<String, Object> map = new HashMap<>();
                     map.put("userId", r.getUser().getId().toHexString());
-                    // Add the user name to the map (handle nulls safely)
+
                     map.put("userName", r.getUser().getName() != null ? r.getUser().getName() : "");
 
                     map.put("bookId", r.getBookId().toHexString());
@@ -337,13 +341,15 @@ public class ReviewRepository implements ReviewRepositoryInterface {
                     String cypher = """
                         UNWIND $batch AS item
                         
-                        // 2. Ensure Reader exists (Merge) and update Name
+                        // 2. Ensure Reader exists and update Name
                         MERGE (r:Reader {mid: item.userId})
                         SET r.name = item.userName
                         
+                        // FIX: You must bridge the Write (SET) and Read (MATCH) with WITH
+                        // We pass 'r' (the reader) and 'item' (data for book/rating) forward
+                        WITH r, item
+                        
                         // 3. Match the Book
-                        // We use MATCH here because we typically don't want to create a 'Ghost Book'
-                        // just because of a review. If the book is missing, we skip the review.
                         MATCH (b:Book {mid: item.bookId})
                         
                         // 4. Create/Update Relationship
