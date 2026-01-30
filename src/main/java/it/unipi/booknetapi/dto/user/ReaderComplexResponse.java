@@ -14,14 +14,14 @@ import java.util.List;
 public class ReaderComplexResponse extends ReaderResponse {
 
     private List<UserBookShelfResponse> shelf = new ArrayList<>();
-    private UserPreferenceResponse preference = new UserPreferenceResponse();
+    private ReaderPreferenceResponse preference = new ReaderPreferenceResponse();
 
     public ReaderComplexResponse(User user) {
         super(user);
 
         if(user instanceof Reader reader) {
             if(reader.getShelf() != null) this.shelf = reader.getShelf().stream().map(UserBookShelfResponse::new).toList();
-            if(reader.getPreference() != null) this.preference = new UserPreferenceResponse(reader.getPreference());
+            if(reader.getPreference() != null) this.preference = new ReaderPreferenceResponse(reader.getPreference());
         }
     }
 

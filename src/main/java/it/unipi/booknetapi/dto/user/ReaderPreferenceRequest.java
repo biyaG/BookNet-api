@@ -15,6 +15,6 @@ public class ReaderPreferenceRequest {
 
     private List<String> authors;
     private List<String> genres;
-    private List<String> languages; //String or From the dataset
+    private List<String> languages;
 
 }

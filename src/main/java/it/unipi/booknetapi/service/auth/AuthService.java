@@ -54,29 +54,29 @@ public class AuthService {
     }
 
     public UserResponse registerReader(ReaderRegistrationRequest registrationRequest) {
-        UserPreference userPreference = new UserPreference();
+        ReaderPreference readerPreference = new ReaderPreference();
         if(registrationRequest.getPreference() != null) {
             List<Author> authorList =
                     registrationRequest.getPreference().getAuthors() != null && !registrationRequest.getPreference().getAuthors().isEmpty()
                             ? this.authorRepository.findAll(registrationRequest.getPreference().getAuthors())
                             : new ArrayList<>();
-            userPreference.setAuthors(authorList.stream().map(AuthorEmbed::new).toList());
+            readerPreference.setAuthors(authorList.stream().map(AuthorEmbed::new).toList());
 
             List<Genre> genres =
                     registrationRequest.getPreference().getGenres() != null && !registrationRequest.getPreference().getGenres().isEmpty()
                             ? this.genreRepository.find(registrationRequest.getPreference().getGenres())
                             : new ArrayList<>();
-            userPreference.setGenres(genres.stream().map(GenreEmbed::new).toList());
+            readerPreference.setGenres(genres.stream().map(GenreEmbed::new).toList());
 
             List<String> languages =
                     registrationRequest.getPreference().getLanguages() != null
                             ? registrationRequest.getPreference().getLanguages()
                             : new ArrayList<>();
-            userPreference.setLanguages(languages);
+            readerPreference.setLanguages(languages);
         } else {
-            userPreference.setAuthors(new ArrayList<>());
-            userPreference.setGenres(new ArrayList<>());
-            userPreference.setLanguages(new ArrayList<>());
+            readerPreference.setAuthors(new ArrayList<>());
+            readerPreference.setGenres(new ArrayList<>());
+            readerPreference.setLanguages(new ArrayList<>());
         }
 
         Reader reader = new Reader();
@@ -84,7 +84,7 @@ public class AuthService {
         reader.setUsername(registrationRequest.getUsername());
         reader.setPassword(encryptionManager.hashPassword(registrationRequest.getPassword()));
         reader.setRole(Role.Reader);
-        reader.setPreference(userPreference);
+        reader.setPreference(readerPreference);
         return new UserResponse(userRepository.insertWithThread(reader));
     }
 

@@ -8,10 +8,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.review.ReviewByReaderListCommand;
-import it.unipi.booknetapi.command.user.AdminListCommand;
-import it.unipi.booknetapi.command.user.ReaderListCommand;
-import it.unipi.booknetapi.command.user.ReviewerListCommand;
-import it.unipi.booknetapi.command.user.UserGetCommand;
+import it.unipi.booknetapi.command.user.*;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
 import it.unipi.booknetapi.dto.user.*;
 import it.unipi.booknetapi.model.user.Role;
@@ -192,6 +189,54 @@ public class UserController {
 
         if(userResponse == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         return ResponseEntity.ok(userResponse);
+    }
+
+    @PostMapping
+    @Operation(summary = "update user name")
+    public ResponseEntity<UserResponse> updateUser(
+            @RequestBody UserUpdateRequest request,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        UserUpdateCommand command = UserUpdateCommand.builder()
+                .userToken(userToken)
+                .name(request.getName())
+                .build();
+
+        UserResponse userResponse = this.userService.update(command);
+
+        if(userResponse == null) return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        return ResponseEntity.ok(userResponse);
+    }
+
+    @PostMapping("/preference")
+    @Operation(summary = "update user")
+    public ResponseEntity<ReaderResponse> updatePreference(
+            @RequestBody ReaderPreferenceRequest request,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        ReaderUpdatePreferenceCommand command = ReaderUpdatePreferenceCommand.builder()
+                .userToken(userToken)
+                .authors(request.getAuthors())
+                .genres(request.getGenres())
+                .languages(request.getLanguages())
+                .build();
+
+        ReaderResponse readerResponse = this.userService.update(command);
+
+        if(readerResponse == null) return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        return ResponseEntity.ok(readerResponse);
     }
 
     @GetMapping("/{idUser}")

@@ -16,10 +16,10 @@ public interface UserRepositoryInterface {
     <T extends User> List<T> insert(List<T> users);
 
     boolean updateName(String idUser, String newName);
-    boolean updateRole(String idUser, Role newRole);
+    // boolean updateRole(String idUser, Role newRole);
     boolean updatePassword(String idUser, String newPassword);
     boolean updateImage(String idUser, String newImageUrl);
-    boolean updatePreference(String idUser, UserPreference preference);
+    boolean updatePreference(String idUser, ReaderPreference preference);
 
     boolean updateShelf(String idUser, List<BookEmbed> shelf);
     boolean addBookInShelf(String idUser, BookEmbed book);

@@ -9,7 +9,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class UserUpdateNameCommand extends BaseCommand {
+public class UserUpdateCommand extends BaseCommand {
 
     private String name;
 

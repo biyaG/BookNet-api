@@ -1,22 +1,35 @@
 package it.unipi.booknetapi.service.user;
 
-import it.unipi.booknetapi.command.user.AdminListCommand;
-import it.unipi.booknetapi.command.user.ReaderListCommand;
-import it.unipi.booknetapi.command.user.ReviewerListCommand;
-import it.unipi.booknetapi.command.user.UserGetCommand;
+import it.unipi.booknetapi.command.user.*;
 import it.unipi.booknetapi.dto.user.*;
+import it.unipi.booknetapi.model.author.Author;
+import it.unipi.booknetapi.model.author.AuthorEmbed;
+import it.unipi.booknetapi.model.genre.Genre;
+import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.user.*;
+import it.unipi.booknetapi.repository.author.AuthorRepository;
+import it.unipi.booknetapi.repository.genre.GenreRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class UserService {
 
+    private final AuthorRepository authorRepository;
+    private final GenreRepository genreRepository;
     private final UserRepository userRepository;
 
 
-    public UserService(UserRepository userRepository) {
+    public UserService(
+            AuthorRepository authorRepository,
+            GenreRepository genreRepository,
+            UserRepository userRepository
+    ) {
+        this.authorRepository = authorRepository;
+        this.genreRepository = genreRepository;
         this.userRepository = userRepository;
     }
 
@@ -30,21 +43,6 @@ public class UserService {
         return new ReaderComplexResponse(user);
     }
 
-
-    public UserResponse getUserById(String idUser) {
-        User user =  userRepository.findById(idUser).orElse(null);
-
-        if(user == null) {
-            return null;
-        }
-
-        switch (user.getRole()) {
-            case Admin: return new AdminResponse(user);
-            case Reader: new ReaderResponse(user);
-            case Reviewer: return new ReviewerResponse(user);
-            default: return new UserResponse(user);
-        }
-    }
 
     public UserResponse get(UserGetCommand command) {
         User user =  userRepository.findById(command.getId()).orElse(null);
@@ -60,6 +58,40 @@ public class UserService {
             default -> new UserResponse(user);
         };
     }
+
+    public UserResponse update(UserUpdateCommand command) {
+        if(command.getUserToken() == null || command.getUserToken().getIdUser() == null) return null;
+
+        if(command.getName() == null) return null;
+
+        boolean updated = this.userRepository.updateName(command.getUserToken().getIdUser(), command.getName());
+        if(!updated) return null;
+
+        return this.get(UserGetCommand.builder().id(command.getUserToken().getIdUser()).userToken(command.getUserToken()).build());
+    }
+
+    public ReaderResponse update(ReaderUpdatePreferenceCommand command) {
+        if(command.getUserToken() == null || command.getUserToken().getIdUser() == null) return null;
+
+        List<Author> authors = this.authorRepository.findAllById(command.getAuthors());
+        List<Genre> genres = this.genreRepository.find(command.getGenres());
+        List<String> languages = command.getLanguages() != null ? command.getLanguages() : List.of();
+
+        ReaderPreference readerPreference = ReaderPreference.builder()
+                .authors(authors.stream().map(AuthorEmbed::new).toList())
+                .genres(genres.stream().map(GenreEmbed::new).toList())
+                .languages(languages)
+                .build();
+
+        boolean updated = this.userRepository.updatePreference(command.getUserToken().getIdUser(), readerPreference);
+        if(!updated) return null;
+
+        User user =  this.userRepository.findById(command.getUserToken().getIdUser())
+                .orElse(null);
+
+        return new ReaderResponse(user);
+    }
+
 
     public PageResult<AdminResponse> list(AdminListCommand command) {
         PageResult<Admin> result = this.userRepository.findAllAdmin(command.getPagination().getPage(), command.getPagination().getSize());

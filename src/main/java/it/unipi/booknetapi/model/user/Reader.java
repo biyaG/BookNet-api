@@ -1,6 +1,5 @@
 package it.unipi.booknetapi.model.user;
 
-import it.unipi.booknetapi.model.book.BookEmbed;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
@@ -21,6 +20,6 @@ public class Reader extends InternalUser {
 
     private List<ObjectId> reviews;
     private List<UserBookShelf> shelf;
-    private UserPreference preference;
+    private ReaderPreference preference;
 
 }

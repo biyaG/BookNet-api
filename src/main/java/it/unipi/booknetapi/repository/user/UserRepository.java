@@ -275,7 +275,7 @@ public class UserRepository implements UserRepositoryInterface {
      * @param newRole new role
      * @return true if the role was updated successfully, false otherwise
      */
-    @Override
+    /*@Override
     public boolean updateRole(String idUser, Role newRole) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newRole);
@@ -287,7 +287,7 @@ public class UserRepository implements UserRepositoryInterface {
                 );
 
         return updateResult.getModifiedCount() > 0;
-    }
+    }*/
 
 
     /**
@@ -334,7 +334,7 @@ public class UserRepository implements UserRepositoryInterface {
      * @return true if the preference was updated successfully, false otherwise
      */
     @Override
-    public boolean updatePreference(String idUser, UserPreference preference) {
+    public boolean updatePreference(String idUser, ReaderPreference preference) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(preference);
 
@@ -353,12 +353,12 @@ public class UserRepository implements UserRepositoryInterface {
     }
 
 
-    private void updateNeo4jPreferenceThread(String idUser, UserPreference preference) {
+    private void updateNeo4jPreferenceThread(String idUser, ReaderPreference preference) {
         Thread thread = new Thread(() -> updateNeo4jPreference(idUser, preference));
         thread.start();
     }
 
-    private void updateNeo4jPreference(String idUser, UserPreference preference) {
+    private void updateNeo4jPreference(String idUser, ReaderPreference preference) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(preference);
 
