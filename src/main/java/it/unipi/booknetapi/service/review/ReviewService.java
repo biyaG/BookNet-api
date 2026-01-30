@@ -146,4 +146,18 @@ public class ReviewService {
         );
     }
 
+    public boolean updateReview(ReviewGetCommand command) {
+        if(command.getId() == null) return false;
+        if(!command.hasUser()) return false;
+
+        Review review = this.reviewRepository.findById(command.getId())
+                .orElse(null);
+
+        if(review == null) return false;
+
+        if(!Objects.equals(command.getUserToken().getIdUser(), review.getUser().getId().toHexString())) return false;
+
+        return this.reviewRepository.updateReview(review.getId().toHexString(), Float.valueOf(review.getRating()), review.getComment());
+    }
+
 }

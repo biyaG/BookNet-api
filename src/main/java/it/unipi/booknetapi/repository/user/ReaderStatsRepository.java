@@ -1,9 +1,6 @@
 package it.unipi.booknetapi.repository.user;
 
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Filters;
-import org.bson.conversions.Bson;
 
 import org.bson.Document;
 
@@ -11,7 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class ReaderStatusRepository {
+public class ReaderStatsRepository {
 
     public List<Document> getAggregatedStatisticsReader( MongoCollection<Document> collection, String dateFormat){
         List<Document> pipeline = Arrays.asList(
@@ -95,7 +92,7 @@ public class ReaderStatusRepository {
         );
 
         return collection.aggregate(pipeline).into(new ArrayList<>());
-    };
+    }
 
 
 }

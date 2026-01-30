@@ -253,4 +253,22 @@ public class UserController {
         return ResponseEntity.ok(this.reviewService.getReviews(command));
     }
 
+
+//-> WE have to add UpdateReview for Users HERE
+//    @PostMapping("/{idUser}/updateReview")
+//    @Operation(summary = "Update user reviews")
+//    @SecurityRequirements(value = {})
+//    public ResponseEntity<PageResult<ReviewResponse>> updateUserReviews(
+//            @PathVariable String idUser,
+//            @RequestParam(required = false) Integer page,
+//            @RequestParam(required = false) Integer size
+//    ) {;
+//
+//        ReviewByReaderListCommand command = ReviewByReaderListCommand.builder()
+//                .readerId(idUser)
+//                .build();
+//
+//        return ResponseEntity.ok(this.reviewService.updateReview());
+//    }
+
 }
