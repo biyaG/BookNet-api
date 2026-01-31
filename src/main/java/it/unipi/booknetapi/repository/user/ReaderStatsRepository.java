@@ -1,13 +1,15 @@
 package it.unipi.booknetapi.repository.user;
 
 import com.mongodb.client.MongoCollection;
-
 import org.bson.Document;
+
+import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+@Repository
 public class ReaderStatsRepository {
 
     public List<Document> getAggregatedStatisticsReader( MongoCollection<Document> collection, String dateFormat){
