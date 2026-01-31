@@ -15,14 +15,13 @@ import java.util.List;
 @AllArgsConstructor
 public class ReadEventResponse {
 
-    private String idBook;
     private BookEmbedResponse book;
     private Date dateRead;
     private Integer pages;
     private List<GenreEmbedResponse> genres = new ArrayList<>();
 
     public ReadEventResponse(ReadEvent readEvent) {
-        this.idBook = readEvent.getBookId().toHexString();
+        this.book = new BookEmbedResponse(readEvent.getBook());
         this.dateRead = readEvent.getDateRead();
         this.pages = readEvent.getPages();
         if(readEvent.getGenres() != null) this.genres = readEvent.getGenres().stream().map(GenreEmbedResponse::new).toList();

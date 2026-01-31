@@ -83,7 +83,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
             return null;
         }
 
-        if (review.getRating() == null && review.getComment() == null) {
+        if (review.getRating() == null) {
             logger.warn("[REPOSITORY] [REVIEW] [INSERT] Review rating and comment is null, cannot insert review: {}", review);
             return null;
         }

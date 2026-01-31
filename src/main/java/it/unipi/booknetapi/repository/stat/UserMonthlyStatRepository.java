@@ -5,6 +5,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.*;
 import io.micrometer.core.instrument.MeterRegistry;
+import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.stat.ReadEvent;
 import it.unipi.booknetapi.model.stat.UserMonthlyStat;
@@ -72,12 +73,10 @@ public class UserMonthlyStatRepository implements UserMonthlyStatRepositoryInter
     @Override
     public void addReadEvent(
             ObjectId userId,
-            ObjectId bookId,
-            int pages,
-            List<GenreEmbed> genres
+            BookEmbed book
     ) {
         Objects.requireNonNull(userId);
-        Objects.requireNonNull(bookId);
+        Objects.requireNonNull(book);
         // Objects.requireNonNull(genres);
 
         LocalDate nowLocal = LocalDate.now();
@@ -86,19 +85,19 @@ public class UserMonthlyStatRepository implements UserMonthlyStatRepositoryInter
         String compositeId = userId.toHexString() + "_" + year + "_" + month;
 
         ReadEvent newEvent = ReadEvent.builder()
-                .bookId(bookId)
-                .pages(pages)
-                .genres(genres != null ? genres : List.of())
+                .book(book)
+                .pages(book.getNumPage())
+                .genres(book.getGenres())
                 .dateRead(Date.from(nowLocal.atStartOfDay(ZoneId.systemDefault()).toInstant()))
                 .build();
 
         List<Bson> updates = new ArrayList<>();
 
         updates.add(Updates.inc("totalBooksRead", 1));
-        updates.add(Updates.inc("totalPagesRead", pages));
+        updates.add(Updates.inc("totalPagesRead", book.getNumPage()));
 
-        if(genres != null) {
-            for (GenreEmbed genre : genres) {
+        if(book.getGenres() != null && !book.getGenres().isEmpty()) {
+            for (GenreEmbed genre : book.getGenres()) {
                 updates.add(Updates.inc("genreDistribution." + genre.getName(), 1));
             }
         }

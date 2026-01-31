@@ -1403,7 +1403,10 @@ public class BookRepository implements BookRepositoryInterface {
             WHERE me <> peer
             AND (
                 (TYPE(myRel) = 'RATED' AND TYPE(peerRel) = 'RATED' AND myRel.rating >= 4 AND peerRel.rating >= 4) OR
-                (TYPE(myRel) = 'ADDED_TO_SHELF' AND TYPE(peerRel) = 'ADDED_TO_SHELF' AND myRel.status = 'Read' AND peerRel.status = 'Read') OR
+                (
+                    TYPE(myRel) = 'ADDED_TO_SHELF' AND TYPE(peerRel) = 'ADDED_TO_SHELF'
+                    AND myRel.status IN ['READING', 'FINISHED'] AND peerRel.status IN ['READING', 'FINISHED']
+                ) OR
                 (TYPE(myRel) IN ['FOLLOWS', 'INTERESTED_IN'] AND TYPE(peerRel) IN ['FOLLOWS', 'INTERESTED_IN'])
             )
     
@@ -1417,7 +1420,7 @@ public class BookRepository implements BookRepositoryInterface {
             LIMIT 50
     
             MATCH (peer)-[r:RATED|ADDED_TO_SHELF]->(rec:Book)
-            WHERE ((TYPE(r) = 'RATED' AND r.rating >= 4) OR (TYPE(r) = 'ADDED_TO_SHELF' AND r.status = 'Read'))
+            WHERE ((TYPE(r) = 'RATED' AND r.rating >= 4) OR (TYPE(r) = 'ADDED_TO_SHELF' AND r.status IN ['READING', 'FINISHED']))
             AND NOT (me)-[:RATED|ADDED_TO_SHELF]->(rec)
     
             RETURN

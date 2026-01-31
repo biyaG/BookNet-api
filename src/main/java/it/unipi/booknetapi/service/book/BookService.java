@@ -119,7 +119,7 @@ public class BookService {
         Book book = this.bookRepository.findById(command.getId()).orElse(null);
         if (book == null) return null;
 
-        logBookActivityInThread(book, ActivityType.READ, 0);
+        logBookActivityInThread(book, ActivityType.VIEW, 0);
 
         return new BookResponse(book);
     }
@@ -237,15 +237,7 @@ public class BookService {
         if(book == null) return false;
 
         BookEmbed bookEmbed = new BookEmbed(book);
-        boolean added = this.userRepository.addBookInShelf(command.getUserToken().getIdUser(), bookEmbed);
-
-        if(added){
-            ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
-            ObjectId bookId = new ObjectId(command.getIdBook());
-            this.userMonthlyStatRepository.addReadEvent(userId, bookId, book.getNumPage(), book.getGenres());
-        }
-
-        return added;
+        return this.userRepository.addBookInShelf(command.getUserToken().getIdUser(), bookEmbed);
     }
 
     public boolean updateBookStatusInShelf(ReaderUpdateBookStatusInShelfCommand command) {
@@ -282,8 +274,11 @@ public class BookService {
             boolean isNotCurrentMonth = !YearMonth.from(updateDate).equals(YearMonth.now());
             if(isNotCurrentMonth) {
                 ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
-                ObjectId bookId = new ObjectId(command.getIdBook());
-                this.userMonthlyStatRepository.addReadEvent(userId, bookId, book.getNumPage(), book.getGenres());
+                this.userMonthlyStatRepository.addReadEvent(userId, bookEmbed);
+            }
+
+            if(status == BookShelfStatus.READING || status == BookShelfStatus.FINISHED) {
+                logBookActivity(book, ActivityType.READ, 0);
             }
         }
 

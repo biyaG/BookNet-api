@@ -23,6 +23,7 @@ public class ActivityStat {
 
     // AGGREGATES
     private int readCount;
+    private int viewCount;
     private int reviewCount;
     private int ratingCount;
     private long ratingSum;

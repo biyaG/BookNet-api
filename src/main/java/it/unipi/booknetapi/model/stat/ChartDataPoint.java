@@ -16,6 +16,7 @@ public class ChartDataPoint {
     private Date date;
 
     private Integer reads;
+    private Integer views;
     private Integer reviews;
     private Double avgRating;
 

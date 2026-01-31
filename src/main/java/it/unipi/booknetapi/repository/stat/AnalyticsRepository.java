@@ -19,10 +19,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 @Repository
 public class AnalyticsRepository implements AnalyticsRepositoryInterface {
@@ -60,7 +57,9 @@ public class AnalyticsRepository implements AnalyticsRepositoryInterface {
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         Date date = Date.from(today.atStartOfDay(ZoneOffset.UTC).toInstant());
 
-        upsertStat(bookId, "BOOK", bookTitle, date, type, ratingValue);
+        if(bookId != null) {
+            upsertStat(bookId, "BOOK", bookTitle, date, type, ratingValue);
+        }
 
         if (authorId != null) {
             upsertStat(authorId, "AUTHOR", authorName, date, type, ratingValue);
@@ -90,6 +89,7 @@ public class AnalyticsRepository implements AnalyticsRepositoryInterface {
                 updates.add(Updates.inc("ratingCount", 1));
                 updates.add(Updates.inc("ratingSum", rating));
             }
+            case VIEW -> updates.add(Updates.inc("viewCount", 1));
         }
 
         this.mongoCollection.updateOne(
@@ -119,6 +119,7 @@ public class AnalyticsRepository implements AnalyticsRepositoryInterface {
 
                                 // Calculate Totals
                                 Accumulators.sum("reads", "$readCount"),
+                                Accumulators.sum("views", "$viewCount"),
                                 Accumulators.sum("reviews", "$reviewCount"),
                                 Accumulators.sum("totalRatings", "$ratingCount"),
                                 Accumulators.sum("sumRatings", "$ratingSum")
@@ -127,6 +128,7 @@ public class AnalyticsRepository implements AnalyticsRepositoryInterface {
                         // 3. Project: Calculate Average Rating
                         Aggregates.project(new Document()
                                 .append("reads", 1)
+                                .append("views", 1)
                                 .append("reviews", 1)
                                 .append("avgRating", new Document("$cond", Arrays.asList(
                                         new Document("$eq", Arrays.asList("$totalRatings", 0)),

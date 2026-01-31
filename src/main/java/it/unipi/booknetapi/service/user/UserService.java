@@ -187,28 +187,7 @@ public class UserService {
 
         UserMonthlyStat stat = this.userMonthlyStatRepository.getMonthlyStats(command.getIdUser(), year, month);
 
-        if(stat != null) {
-            UserMonthlyStatResponse response = new UserMonthlyStatResponse(stat);
-            if(stat.getReadingLog() != null) {
-                List<ObjectId> idBooks = stat.getReadingLog().stream()
-                        .map(ReadEvent::getBookId)
-                        .toList();
-
-                if(!idBooks.isEmpty()) {
-                    List<Book> books = this.bookRepository.find(idBooks);
-                    Map<String, BookEmbedResponse> bookEmbedMap = books.stream()
-                            .collect(Collectors.toMap(
-                                    b -> b.getId().toHexString(),
-                                    BookEmbedResponse::new
-                            ));
-
-                    response.getReadingLog().forEach(event -> {
-                        event.setBook(bookEmbedMap.get(event.getIdBook()));
-                    });
-                }
-            }
-            return response;
-        }
+        if(stat != null) return new UserMonthlyStatResponse(stat);
 
         UserMonthlyStatResponse response = new UserMonthlyStatResponse();
         response.setYear(year);
@@ -227,31 +206,7 @@ public class UserService {
 
         if(stats == null || stats.isEmpty()) return List.of();
 
-        List<ObjectId> idBooks = stats.stream()
-                .map(UserMonthlyStat::getReadingLog)
-                .filter(Objects::nonNull)
-                .flatMap(List::stream)
-                .map(ReadEvent::getBookId)
-                .toList();
-
-        List<Book> books = this.bookRepository.find(idBooks);
-        Map<String, BookEmbedResponse> bookEmbedMap = books.stream()
-                .collect(Collectors.toMap(
-                        b -> b.getId().toHexString(),
-                        BookEmbedResponse::new
-                ));
-
-        List<UserMonthlyStatResponse> response = new ArrayList<>(stats.size());
-        for(UserMonthlyStat stat : stats) {
-            UserMonthlyStatResponse statResponse = new UserMonthlyStatResponse(stat);
-            if(statResponse.getReadingLog() != null) {
-                statResponse.getReadingLog().forEach(event -> {
-                    event.setBook(bookEmbedMap.get(event.getIdBook()));
-                });
-            }
-        }
-
-        return response;
+        return stats.stream().map(UserMonthlyStatResponse::new).toList();
     }
 
 

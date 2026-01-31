@@ -6,7 +6,7 @@ import java.util.List;
 
 public class ChartHelper {
 
-    public static final List<String> VALUES = List.of("second", "minute", "hour", "day", "week", "month", "year");
+    public static final List<String> VALUES = List.of("day", "week", "month", "year");
 
 
     public record ChartParams(Date start, Date end, String granularity) {}

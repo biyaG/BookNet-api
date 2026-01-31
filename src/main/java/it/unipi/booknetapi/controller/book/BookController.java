@@ -299,6 +299,8 @@ public class BookController {
         return ResponseEntity.ok(updated ? "Book removed successfully" : "Error removing book");
     }
 
+    // TODO: add PUT Book
+
     @DeleteMapping("/{idBook}")
     @Operation(summary = "Delete Book (Admin only)")
     public ResponseEntity<String> deleteBookById(@PathVariable String idBook, @RequestHeader("Authorization") String token){

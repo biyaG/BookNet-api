@@ -81,8 +81,8 @@ public class ReviewService {
             try {
                 this.userRepository.addReview(reviewSaved);
                 this.bookRepository.addReview(reviewSaved);
+                logBookActivity(book, ActivityType.RATING, command.getRating());
                 if(command.getComment() != null) logBookActivity(book, ActivityType.REVIEW, 0);
-                if(command.getRating() != null) logBookActivity(book, ActivityType.RATING, command.getRating());
             } catch (Exception ignored) {}
         };
         Thread thread = new Thread(task);

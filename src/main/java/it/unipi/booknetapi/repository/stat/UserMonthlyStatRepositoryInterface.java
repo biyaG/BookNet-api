@@ -1,5 +1,6 @@
 package it.unipi.booknetapi.repository.stat;
 
+import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
 import it.unipi.booknetapi.model.stat.UserMonthlyStat;
 import it.unipi.booknetapi.model.stat.UserYearlyStat;
@@ -13,7 +14,7 @@ public interface UserMonthlyStatRepositoryInterface {
 
     List<UserMonthlyStat> getMonthlyStats(String userId, int year);
 
-    void addReadEvent(ObjectId userId, ObjectId bookId, int pages, List<GenreEmbed> genres);
+    void addReadEvent(ObjectId userId, BookEmbed book);
 
     public UserYearlyStat getYearlyStats(String userId, int year);
 
