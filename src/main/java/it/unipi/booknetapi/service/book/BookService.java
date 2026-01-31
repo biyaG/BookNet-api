@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.service.book;
 
 import it.unipi.booknetapi.command.book.*;
+import it.unipi.booknetapi.command.stat.AnalyticsGetListCommand;
 import it.unipi.booknetapi.command.user.ReaderAddBookToShelfCommand;
 import it.unipi.booknetapi.command.user.ReaderRemoveBookInShelfCommand;
 import it.unipi.booknetapi.command.user.ReaderUpdateBookStatusInShelfCommand;
@@ -8,12 +9,17 @@ import it.unipi.booknetapi.dto.book.BookEmbedResponse;
 import it.unipi.booknetapi.dto.book.BookRecommendationResponse;
 import it.unipi.booknetapi.dto.book.BookResponse;
 import it.unipi.booknetapi.dto.book.BookSimpleResponse;
+import it.unipi.booknetapi.dto.stat.ChartDataPointResponse;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.book.BookRecommendation;
+import it.unipi.booknetapi.model.stat.ActivityType;
+import it.unipi.booknetapi.model.stat.ChartDataPoint;
+import it.unipi.booknetapi.model.stat.ChartHelper;
 import it.unipi.booknetapi.model.user.BookShelfStatus;
 import it.unipi.booknetapi.model.user.UserBookShelf;
 import it.unipi.booknetapi.repository.book.BookRepository;
+import it.unipi.booknetapi.repository.stat.AnalyticsRepository;
 import it.unipi.booknetapi.repository.stat.UserMonthlyStatRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
 import it.unipi.booknetapi.shared.model.PageResult;
@@ -28,15 +34,18 @@ import java.util.List;
 @Service
 public class BookService {
 
+    private final AnalyticsRepository analyticsRepository;
     private final BookRepository bookRepository;
     private final UserMonthlyStatRepository userMonthlyStatRepository;
     private final UserRepository userRepository;
 
     public BookService(
+            AnalyticsRepository analyticsRepository,
             BookRepository bookRepository,
             UserMonthlyStatRepository userMonthlyStatRepository,
             UserRepository userRepository
     ) {
+        this.analyticsRepository = analyticsRepository;
         this.bookRepository = bookRepository;
         this.userMonthlyStatRepository = userMonthlyStatRepository;
         this.userRepository = userRepository;
@@ -73,11 +82,44 @@ public class BookService {
                 .toList();
     }
 
+    private void logBookActivity(Book book, ActivityType type, int ratingValue) {
+        this.analyticsRepository.recordActivity(
+                book.getId(), book.getTitle(),
+                null, null,
+                null,
+                type,
+                ratingValue
+        );
+    }
+
+    private void logBookActivityInThread(Book book, ActivityType type, int ratingValue) {
+        Thread thread = new Thread(() -> logBookActivity(book, type, ratingValue));
+        thread.start();
+    }
+
+    private void logBookActivity(BookEmbed book, ActivityType type, int ratingValue) {
+        this.analyticsRepository.recordActivity(
+                book.getId(), book.getTitle(),
+                null, null,
+                null,
+                type,
+                ratingValue
+        );
+    }
+
+    private void logBookActivityInThread(BookEmbed book, ActivityType type, int ratingValue) {
+        Thread thread = new Thread(() -> logBookActivity(book, type, ratingValue));
+        thread.start();
+    }
+
     public BookResponse getBookById(BookGetCommand command) {
         if (command.getId() == null) return null;
+        if(!ObjectId.isValid(command.getId())) return null;
 
         Book book = this.bookRepository.findById(command.getId()).orElse(null);
         if (book == null) return null;
+
+        logBookActivityInThread(book, ActivityType.READ, 0);
 
         return new BookResponse(book);
     }
@@ -139,6 +181,21 @@ public class BookService {
                 result.getCurrentPage(),
                 result.getPageSize()
         );
+    }
+
+
+    public List<ChartDataPointResponse> getAnalytics(AnalyticsGetListCommand command) {
+        if (command.getId() == null) return null;
+        if(!ObjectId.isValid(command.getId())) return null;
+
+        Book book = this.bookRepository.findById(command.getId()).orElse(null);
+        if(book == null) return null;
+
+        ChartHelper.ChartParams params = ChartHelper.normalizeParams(command.getStart(), command.getEnd(), command.getGranularity());
+
+        List<ChartDataPoint> chartDataPoints = this.analyticsRepository.getChartData(book.getId(), params.start(), params.end(), params.granularity());
+
+        return chartDataPoints.stream().map(ChartDataPointResponse::new).toList();
     }
 
 

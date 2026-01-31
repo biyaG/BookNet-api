@@ -1,10 +1,18 @@
 package it.unipi.booknetapi.service.genre;
 
 import it.unipi.booknetapi.command.genre.*;
+import it.unipi.booknetapi.command.stat.AnalyticsGetListCommand;
 import it.unipi.booknetapi.dto.genre.GenreResponse;
+import it.unipi.booknetapi.dto.stat.ChartDataPointResponse;
 import it.unipi.booknetapi.model.genre.Genre;
+import it.unipi.booknetapi.model.genre.GenreEmbed;
+import it.unipi.booknetapi.model.stat.ActivityType;
+import it.unipi.booknetapi.model.stat.ChartDataPoint;
+import it.unipi.booknetapi.model.stat.ChartHelper;
 import it.unipi.booknetapi.repository.genre.GenreRepository;
+import it.unipi.booknetapi.repository.stat.AnalyticsRepository;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -12,9 +20,14 @@ import java.util.List;
 @Service
 public class GenreService {
 
+    private final AnalyticsRepository analyticsRepository;
     private final GenreRepository genreRepository;
 
-    public GenreService(GenreRepository genreRepository) {
+    public GenreService(
+            AnalyticsRepository analyticsRepository,
+            GenreRepository genreRepository
+    ) {
+        this.analyticsRepository = analyticsRepository;
         this.genreRepository = genreRepository;
     }
 
@@ -29,11 +42,44 @@ public class GenreService {
     }
 
 
+    private void logGenreActivity(Genre genre, ActivityType type, int ratingValue) {
+        this.analyticsRepository.recordActivity(
+                null, null,
+                null, null,
+                List.of(new GenreEmbed(genre)),
+                type,
+                ratingValue
+        );
+    }
+
+    private void logGenreActivityInThread(Genre genre, ActivityType type, int ratingValue) {
+        Thread thread = new Thread(() -> logGenreActivity(genre, type, ratingValue));
+        thread.start();
+    }
+
+    private void logGenreActivity(GenreEmbed genre, ActivityType type, int ratingValue) {
+        this.analyticsRepository.recordActivity(
+                null, null,
+                null, null,
+                List.of(genre),
+                type,
+                ratingValue
+        );
+    }
+
+    private void logGenreActivityInThread(GenreEmbed genre, ActivityType type, int ratingValue) {
+        Thread thread = new Thread(() -> logGenreActivity(genre, type, ratingValue));
+        thread.start();
+    }
+
+
     public GenreResponse getGenreById(GenreGetCommand command) {
         if(command.getId() == null) return null;
 
         Genre genre = this.genreRepository.findById(command.getId()).orElse(null);
         if(genre == null) return null;
+
+        logGenreActivityInThread(genre, ActivityType.READ, 0);
 
         return new GenreResponse(genre);
     }
@@ -92,5 +138,22 @@ public class GenreService {
                 result.getPageSize()
         );
     }
+
+
+
+    public List<ChartDataPointResponse> getAnalytics(AnalyticsGetListCommand command) {
+        if (command.getId() == null) return null;
+        if(!ObjectId.isValid(command.getId())) return null;
+
+        Genre genre = this.genreRepository.findById(command.getId()).orElse(null);
+        if(genre == null) return null;
+
+        ChartHelper.ChartParams params = ChartHelper.normalizeParams(command.getStart(), command.getEnd(), command.getGranularity());
+
+        List<ChartDataPoint> chartDataPoints = this.analyticsRepository.getChartData(genre.getId(), params.start(), params.end(), params.granularity());
+
+        return chartDataPoints.stream().map(ChartDataPointResponse::new).toList();
+    }
+
 
 }

@@ -2,12 +2,15 @@ package it.unipi.booknetapi.service.review;
 
 import it.unipi.booknetapi.command.review.*;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
+import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.review.Review;
+import it.unipi.booknetapi.model.stat.ActivityType;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.model.user.User;
 import it.unipi.booknetapi.model.user.UserEmbed;
 import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.review.ReviewRepository;
+import it.unipi.booknetapi.repository.stat.AnalyticsRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
 import it.unipi.booknetapi.shared.model.PageResult;
 import org.bson.types.ObjectId;
@@ -20,27 +23,38 @@ import java.util.Objects;
 @Service
 public class ReviewService {
 
+    private final AnalyticsRepository analyticsRepository;
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
     private final BookRepository bookRepository;
 
 
     public ReviewService(
+            AnalyticsRepository analyticsRepository,
             ReviewRepository reviewRepository,
             UserRepository userRepository,
             BookRepository bookRepository
     ) {
+        this.analyticsRepository = analyticsRepository;
         this.reviewRepository = reviewRepository;
         this.userRepository = userRepository;
         this.bookRepository = bookRepository;
     }
 
 
+    private void logBookActivity(Book book, ActivityType type, int ratingValue) {
+        this.analyticsRepository.recordActivity(
+                book.getId(), book.getTitle(),
+                null, null,
+                null,
+                type,
+                ratingValue
+        );
+    }
+
     public ReviewResponse saveReview(ReviewCreateCommand command) {
         if(!command.hasUser()) return null;
         if(command.getBookId() == null || !ObjectId.isValid(command.getBookId())) return null;
-
-        ObjectId bookId = new ObjectId(command.getBookId());
 
         User user = this.userRepository.findById(command.getUserToken().getIdUser()).orElse(null);
 
@@ -48,8 +62,12 @@ public class ReviewService {
 
         UserEmbed userEmbed = new UserEmbed(user);
 
+        Book book = this.bookRepository.findById(command.getBookId()).orElse(null);
+
+        if(book == null) return null;
+
         Review review = Review.builder()
-                .bookId(bookId)
+                .bookId(book.getId())
                 .user(userEmbed)
                 .rating(command.getRating())
                 .comment(command.getComment())
@@ -63,6 +81,8 @@ public class ReviewService {
             try {
                 this.userRepository.addReview(reviewSaved);
                 this.bookRepository.addReview(reviewSaved);
+                if(command.getComment() != null) logBookActivity(book, ActivityType.REVIEW, 0);
+                if(command.getRating() != null) logBookActivity(book, ActivityType.RATING, command.getRating());
             } catch (Exception ignored) {}
         };
         Thread thread = new Thread(task);

@@ -1,15 +1,23 @@
 package it.unipi.booknetapi.service.author;
 
 import it.unipi.booknetapi.command.author.*;
+import it.unipi.booknetapi.command.stat.AnalyticsGetListCommand;
 import it.unipi.booknetapi.dto.author.AuthorResponse;
 import it.unipi.booknetapi.dto.author.AuthorSimpleResponse;
 import it.unipi.booknetapi.dto.author.AuthorStatResponse;
 import it.unipi.booknetapi.dto.book.BookEmbedResponse;
+import it.unipi.booknetapi.dto.stat.ChartDataPointResponse;
 import it.unipi.booknetapi.model.author.Author;
+import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.author.AuthorStats;
 import it.unipi.booknetapi.model.book.BookEmbed;
+import it.unipi.booknetapi.model.stat.ActivityType;
+import it.unipi.booknetapi.model.stat.ChartDataPoint;
+import it.unipi.booknetapi.model.stat.ChartHelper;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
+import it.unipi.booknetapi.repository.stat.AnalyticsRepository;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -18,9 +26,14 @@ import java.util.Objects;
 @Service
 public class AuthorService {
 
+    private final AnalyticsRepository analyticsRepository;
     private final AuthorRepository authorRepository;
 
-    public AuthorService(AuthorRepository authorRepository) {
+    public AuthorService(
+            AnalyticsRepository analyticsRepository,
+            AuthorRepository authorRepository
+    ) {
+        this.analyticsRepository = analyticsRepository;
         this.authorRepository = authorRepository;
     }
 
@@ -41,12 +54,45 @@ public class AuthorService {
         return new AuthorResponse(author);
     }
 
+    private void logAuthorActivity(Author author, ActivityType type, int ratingValue) {
+        this.analyticsRepository.recordActivity(
+                null, null,
+                author.getId(), author.getName(),
+                null,
+                type,
+                ratingValue
+        );
+    }
+
+    private void logAuthorActivityInThread(Author author, ActivityType type, int ratingValue) {
+        Thread thread = new Thread(() -> logAuthorActivity(author, type, ratingValue));
+        thread.start();
+    }
+
+
+    private void logAuthorActivity(AuthorEmbed author, ActivityType type, int ratingValue) {
+        this.analyticsRepository.recordActivity(
+                null, null,
+                author.getId(), author.getName(),
+                null,
+                type,
+                ratingValue
+        );
+    }
+
+    private void logAuthorActivityInThread(AuthorEmbed author, ActivityType type, int ratingValue) {
+        Thread thread = new Thread(() -> logAuthorActivity(author, type, ratingValue));
+        thread.start();
+    }
+
 
     public AuthorResponse getAuthorById(AuthorGetCommand command) {
         if(command.getId() == null) return null;
 
         Author author = this.authorRepository.findById(command.getId()).orElse(null);
         if(author == null) return null;
+
+        logAuthorActivityInThread(author, ActivityType.READ, 0);
 
         return new AuthorResponse(author);
     }
@@ -113,6 +159,24 @@ public class AuthorService {
                 .map(BookEmbedResponse::new)
                 .toList();
     }
+
+
+
+    public List<ChartDataPointResponse> getAnalytics(AnalyticsGetListCommand command) {
+        if (command.getId() == null) return null;
+        if(!ObjectId.isValid(command.getId())) return null;
+
+        Author author = this.authorRepository.findById(command.getId()).orElse(null);
+        if(author == null) return null;
+
+        ChartHelper.ChartParams params = ChartHelper.normalizeParams(command.getStart(), command.getEnd(), command.getGranularity());
+
+        List<ChartDataPoint> chartDataPoints = this.analyticsRepository.getChartData(author.getId(), params.start(), params.end(), params.granularity());
+
+        return chartDataPoints.stream().map(ChartDataPointResponse::new).toList();
+    }
+
+
 
     public List<AuthorStatResponse> getMostWrittenBooksAuthors(AuthorGetMostWrittenBooksCommand command) {
         List<AuthorStats> stats = this.authorRepository.findMostWrittenBooksAuthors(command.getLimit() != null ? command.getLimit() : 20);

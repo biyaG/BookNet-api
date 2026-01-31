@@ -7,11 +7,13 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.author.*;
 import it.unipi.booknetapi.command.fetch.ImportDataCommand;
+import it.unipi.booknetapi.command.stat.AnalyticsGetListCommand;
 import it.unipi.booknetapi.dto.author.AuthorCreateRequest;
 import it.unipi.booknetapi.dto.author.AuthorResponse;
 import it.unipi.booknetapi.dto.author.AuthorSimpleResponse;
 import it.unipi.booknetapi.dto.author.AuthorStatResponse;
 import it.unipi.booknetapi.dto.book.BookEmbedResponse;
+import it.unipi.booknetapi.dto.stat.ChartDataPointResponse;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.author.AuthorService;
@@ -22,12 +24,14 @@ import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
 import it.unipi.booknetapi.shared.model.Source;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Date;
 import java.util.List;
 
 @RestController
@@ -218,6 +222,41 @@ public class AuthorController {
 
         return ResponseEntity.ok(this.authorService.getAuthorBooks(command));
     }
+
+
+
+    @GetMapping("/{idAuthor}/analytic/chart")
+    @Operation(summary = "Get analytics chart data point", description = "Get list of chart data point relative to this author.")
+    public ResponseEntity<List<ChartDataPointResponse>> getAnalyticsChartData(
+            @PathVariable String idAuthor,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) // Accepts "yyyy-MM-dd"
+            Date startDate,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) // Accepts "yyyy-MM-dd"
+            Date endDate,
+            @RequestParam(required = false) String granularity,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin){
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        AnalyticsGetListCommand command = AnalyticsGetListCommand.builder()
+                .id(idAuthor)
+                .start(startDate)
+                .end(endDate)
+                .granularity(granularity)
+                .userToken(userToken)
+                .build();
+
+        List<ChartDataPointResponse> response = this.authorService.getAnalytics(command);
+        if(response == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        return ResponseEntity.ok(response);
+    }
+
 
 
     @GetMapping("/most/written-books")

@@ -10,12 +10,14 @@ import it.unipi.booknetapi.command.book.*;
 import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
 import it.unipi.booknetapi.command.review.ReviewCreateCommand;
+import it.unipi.booknetapi.command.stat.AnalyticsGetListCommand;
 import it.unipi.booknetapi.command.user.ReaderAddBookToShelfCommand;
 import it.unipi.booknetapi.command.user.ReaderRemoveBookInShelfCommand;
 import it.unipi.booknetapi.command.user.ReaderUpdateBookStatusInShelfCommand;
 import it.unipi.booknetapi.dto.book.*;
 import it.unipi.booknetapi.dto.review.ReviewCreateRequest;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
+import it.unipi.booknetapi.dto.stat.ChartDataPointResponse;
 import it.unipi.booknetapi.dto.user.ReaderBookShelfUpdateStatusRequest;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
@@ -30,12 +32,14 @@ import it.unipi.booknetapi.shared.model.PaginationRequest;
 import it.unipi.booknetapi.shared.model.Source;
 
 import org.bson.types.ObjectId;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Date;
 import java.util.List;
 
 
@@ -400,6 +404,38 @@ public class BookController {
         return ResponseEntity.ok(this.bookService.getBooksByGenre(command));
     }
 
+
+    @GetMapping("/{idBook}/analytic/chart")
+    @Operation(summary = "Get analytics chart data point", description = "Get list of chart data point relative to this book.")
+    public ResponseEntity<List<ChartDataPointResponse>> getAnalyticsChartData(
+            @PathVariable String idBook,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) // Accepts "yyyy-MM-dd"
+            Date startDate,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) // Accepts "yyyy-MM-dd"
+            Date endDate,
+            @RequestParam(required = false) String granularity,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin){
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        AnalyticsGetListCommand command = AnalyticsGetListCommand.builder()
+                .id(idBook)
+                .start(startDate)
+                .end(endDate)
+                .granularity(granularity)
+                .userToken(userToken)
+                .build();
+
+        List<ChartDataPointResponse> response = this.bookService.getAnalytics(command);
+        if(response == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        return ResponseEntity.ok(response);
+    }
 
 
     @GetMapping("/random")
