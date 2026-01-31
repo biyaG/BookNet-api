@@ -411,7 +411,7 @@ public class UserRepository implements UserRepositoryInterface {
                                 ON CREATE SET a.name = aData.name
                                 MERGE (r)-[:FOLLOWS]->(a)
                             )
-                    """;
+                            """;
 
                     tx.run(
                             cypher,
@@ -427,6 +427,25 @@ public class UserRepository implements UserRepositoryInterface {
         });
     }
 
+
+    /**
+     * @param idUser user's id
+     * @return list of books in the shelf
+     */
+    @Override
+    public List<UserBookShelf> getShelf(String idUser) {
+        Objects.requireNonNull(idUser);
+        if(!ObjectId.isValid(idUser)) return List.of();
+
+        ObjectId userId = new ObjectId(idUser);
+
+        Reader reader = this.readerCollection.find(Filters.eq("_id", userId)).first();
+        if(reader == null) return List.of();
+
+        return reader.getShelf();
+    }
+
+
     /**
      * @param idUser user's id
      * @param books list of books to add to the shelf
@@ -439,7 +458,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         List<UserBookShelf> shelf = books.stream()
                 .filter(b -> b.getId() != null)
-                .map(b -> new UserBookShelf(b, BookShelfStatus.ADDED, new Date()))
+                .map(b -> new UserBookShelf(b, BookShelfStatus.ADDED, new Date(), new Date()))
                 .toList();
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
@@ -529,7 +548,7 @@ public class UserRepository implements UserRepositoryInterface {
         if(!ObjectId.isValid(idUser)) return false;
         if(book.getId() == null) return false;
 
-        UserBookShelf bookShelf = new UserBookShelf(book, BookShelfStatus.ADDED, new Date());
+        UserBookShelf bookShelf = new UserBookShelf(book, BookShelfStatus.ADDED, new Date(), new Date());
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
@@ -552,8 +571,6 @@ public class UserRepository implements UserRepositoryInterface {
                 mongoSession.abortTransaction();
             }
         }
-
-
 
         return false;
     }
@@ -642,6 +659,74 @@ public class UserRepository implements UserRepositoryInterface {
                 });
             }
         });
+    }
+
+
+    /**
+     * @param idUser user's id
+     * @param book book to update
+     * @param newStatus new status
+     * @return true if the book was updated successfully, false otherwise
+     */
+    @Override
+    public boolean updateShelfStatus(String idUser, BookEmbed book, BookShelfStatus newStatus) {
+        Objects.requireNonNull(idUser);
+        Objects.requireNonNull(book);
+        if(!ObjectId.isValid(idUser)) return false;
+
+        ObjectId userId = new ObjectId(idUser);
+
+        if(newStatus == null) newStatus = BookShelfStatus.ADDED;
+
+        Bson filter = Filters.and(
+                Filters.eq("_id", userId),
+                Filters.eq("shelf.book.id", book.getId())
+        );
+
+        var updateStatus = Updates.combine(
+                Updates.set("shelf.$.status", newStatus.name()),
+                Updates.set("shelf.$.dateUpdated", new Date())
+        );
+
+        UpdateResult result = this.readerCollection.updateOne(filter, updateStatus);
+
+        if (result.getModifiedCount() == 0) return this.addBookInShelf(idUser, book);
+
+        updateShelfStatusNeo4j(idUser, book, newStatus);
+
+        return true;
+    }
+
+    public void updateShelfStatusNeo4j(String userId, BookEmbed book, BookShelfStatus newStatus) {
+        String query = """
+            MERGE (r:Reader {mid: $userId})
+            
+            MERGE (b:Book {mid: $bookId})
+            ON CREATE SET b.title = $bookTitle
+            
+            MERGE (r)-[rel:ADDED_TO_SHELF]->(b)
+            
+            SET
+                rel.status = $status,
+                rel.ts = $ts
+            """;
+
+        this.registry.timer("neo4j.ops", "query", "update_shelf").record(() ->{
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(query, Values.parameters(
+                            "userId", userId,
+                            "bookId", book.getId().toHexString(),
+                            "bookTitle", book.getTitle(),
+                            "status", newStatus.name(),
+                            "ts", System.currentTimeMillis()
+                    ));
+                    return null;
+                });
+            }
+        });
+
+
     }
 
 
@@ -1111,7 +1196,7 @@ public class UserRepository implements UserRepositoryInterface {
                                         m.put("bookId", item.getBook().getId().toHexString());
                                         m.put("title", item.getBook().getTitle());
                                         m.put("status", item.getStatus() != null ? item.getStatus().name() : "ADDED");
-                                        m.put("ts", item.getDateAdded() != null ? item.getDateAdded().getTime() : System.currentTimeMillis());
+                                        m.put("ts", item.getDateUpdated() != null ? item.getDateUpdated().getTime() : (item.getDateAdded() != null ? item.getDateAdded().getTime() : System.currentTimeMillis()));
                                         return m;
                                     })
                                     .toList();

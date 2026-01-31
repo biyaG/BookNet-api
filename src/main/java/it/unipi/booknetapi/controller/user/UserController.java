@@ -8,8 +8,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.review.ReviewByReaderListCommand;
+import it.unipi.booknetapi.command.stat.UserMonthlyStatGetCommand;
+import it.unipi.booknetapi.command.stat.UserMonthlyStatListCommand;
+import it.unipi.booknetapi.command.stat.UserYearlyStatGetCommand;
 import it.unipi.booknetapi.command.user.*;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
+import it.unipi.booknetapi.dto.stat.UserMonthlyStatResponse;
+import it.unipi.booknetapi.dto.stat.UserYearlyStatResponse;
 import it.unipi.booknetapi.dto.user.*;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
@@ -21,6 +26,8 @@ import it.unipi.booknetapi.shared.model.PaginationRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/user")
@@ -297,5 +304,75 @@ public class UserController {
 
         return ResponseEntity.ok(this.reviewService.getReviews(command));
     }
+
+
+    // stats
+
+
+    @GetMapping("/stat/monthly")
+    @Operation(summary = "Get user monthly stat")
+    public ResponseEntity<UserMonthlyStatResponse> getUserMonthlyStat(
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        UserMonthlyStatGetCommand command = UserMonthlyStatGetCommand.builder()
+                .idUser(userToken.getIdUser())
+                .year(year)
+                .month(month)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.userService.getStat(command));
+    }
+
+    @GetMapping("/stat/monthly/list")
+    @Operation(summary = "Get user monthly stat by year")
+    public ResponseEntity<List<UserMonthlyStatResponse>> getUserMonthlyStat(
+            @RequestParam(required = false) Integer year,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        UserMonthlyStatListCommand command = UserMonthlyStatListCommand.builder()
+                .idUser(userToken.getIdUser())
+                .year(year)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.userService.getStats(command));
+    }
+
+    @GetMapping("/stat/yearly")
+    @Operation(summary = "Get user yearly stat")
+    public ResponseEntity<UserYearlyStatResponse> getUserYearlyStat(
+            @RequestParam(required = false) Integer year,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        UserYearlyStatGetCommand command = UserYearlyStatGetCommand.builder()
+                .idUser(userToken.getIdUser())
+                .year(year)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.userService.getYearlyStat(command));
+    }
+
 
 }

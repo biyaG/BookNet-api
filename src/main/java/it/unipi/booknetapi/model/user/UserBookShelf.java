@@ -15,5 +15,6 @@ public class UserBookShelf {
     private BookShelfStatus status;
 
     private Date dateAdded;
+    private Date dateUpdated;
 
 }

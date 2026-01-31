@@ -1,6 +1,8 @@
 package it.unipi.booknetapi.service.book;
 
 import it.unipi.booknetapi.command.book.*;
+import it.unipi.booknetapi.command.user.ReaderAddBookToShelfCommand;
+import it.unipi.booknetapi.command.user.ReaderUpdateBookStatusInShelfCommand;
 import it.unipi.booknetapi.dto.book.BookEmbedResponse;
 import it.unipi.booknetapi.dto.book.BookRecommendationResponse;
 import it.unipi.booknetapi.dto.book.BookResponse;
@@ -8,10 +10,16 @@ import it.unipi.booknetapi.dto.book.BookSimpleResponse;
 import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.book.BookEmbed;
 import it.unipi.booknetapi.model.book.BookRecommendation;
+import it.unipi.booknetapi.model.user.BookShelfStatus;
+import it.unipi.booknetapi.model.user.UserBookShelf;
 import it.unipi.booknetapi.repository.book.BookRepository;
+import it.unipi.booknetapi.repository.stat.UserMonthlyStatRepository;
+import it.unipi.booknetapi.repository.user.UserRepository;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
 
+import java.time.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,9 +28,17 @@ import java.util.List;
 public class BookService {
 
     private final BookRepository bookRepository;
+    private final UserMonthlyStatRepository userMonthlyStatRepository;
+    private final UserRepository userRepository;
 
-    public BookService(BookRepository bookRepository) {
+    public BookService(
+            BookRepository bookRepository,
+            UserMonthlyStatRepository userMonthlyStatRepository,
+            UserRepository userRepository
+    ) {
         this.bookRepository = bookRepository;
+        this.userMonthlyStatRepository = userMonthlyStatRepository;
+        this.userRepository = userRepository;
     }
 
 
@@ -151,6 +167,69 @@ public class BookService {
         int limit = getDefaultLimitIfNull(command.getLimit());
         List<BookRecommendation> books = this.bookRepository.findCollaborativeRecommendationsBooks(command.getIdUser(), limit);
         return books.stream().map(BookRecommendationResponse::new).toList();
+    }
+
+
+    public boolean addBookInShelf(ReaderAddBookToShelfCommand command) {
+        if(command.getUserToken() == null || command.getIdBook() == null) return false;
+
+        if(!ObjectId.isValid(command.getIdBook())) return false;
+
+        Book book = this.bookRepository.findById(command.getIdBook()).orElse(null);
+        if(book == null) return false;
+
+        BookEmbed bookEmbed = new BookEmbed(book);
+        boolean added = this.userRepository.addBookInShelf(command.getUserToken().getIdUser(), bookEmbed);
+
+        if(added){
+            ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
+            ObjectId bookId = new ObjectId(command.getIdBook());
+            this.userMonthlyStatRepository.addReadEvent(userId, bookId, book.getNumPage(), book.getGenres());
+        }
+
+        return added;
+    }
+
+    public boolean updateBookStatusInShelf(ReaderUpdateBookStatusInShelfCommand command) {
+        if(command.getUserToken() == null || command.getIdBook() == null) return false;
+
+        if(!ObjectId.isValid(command.getIdBook())) return false;
+
+        Book book = this.bookRepository.findById(command.getIdBook()).orElse(null);
+        if(book == null) return false;
+
+        List<UserBookShelf> shelf = this.userRepository.getShelf(command.getUserToken().getIdUser());
+        UserBookShelf shelfBook = shelf == null ? null : shelf.stream()
+                .filter(s -> s.getBook().getId().equals(book.getId()))
+                .findFirst()
+                .orElse(null);
+
+        if(shelf == null || shelf.isEmpty() || shelfBook == null) {
+            ReaderAddBookToShelfCommand addCommand = ReaderAddBookToShelfCommand.builder()
+                    .userToken(command.getUserToken())
+                    .idBook(command.getIdBook())
+                    .build();
+            return this.addBookInShelf(addCommand);
+        }
+
+        BookShelfStatus status = command.getStatus() != null ? command.getStatus() : BookShelfStatus.nextStatus(shelfBook.getStatus());
+
+        BookEmbed bookEmbed = new BookEmbed(book);
+        boolean updated = this.userRepository.updateShelfStatus(command.getUserToken().getIdUser(), bookEmbed, status);
+
+        if(updated) {
+            LocalDate updateDate = shelfBook.getDateUpdated().toInstant()
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDate();
+            boolean isNotCurrentMonth = !YearMonth.from(updateDate).equals(YearMonth.now());
+            if(isNotCurrentMonth) {
+                ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
+                ObjectId bookId = new ObjectId(command.getIdBook());
+                this.userMonthlyStatRepository.addReadEvent(userId, bookId, book.getNumPage(), book.getGenres());
+            }
+        }
+
+        return updated;
     }
 
 }

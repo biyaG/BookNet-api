@@ -16,12 +16,13 @@ public class UserBookShelfResponse {
     private BookShelfStatus status;
 
     private Date dateAdded;
+    private Date dateUpdated;
 
     public UserBookShelfResponse(UserBookShelf userBook) {
 
         this.book = new BookEmbedResponse(userBook.getBook());
         this.status = userBook.getStatus();
         this.dateAdded = userBook.getDateAdded();
-
+        this.dateUpdated = userBook.getDateUpdated();
     }
 }

@@ -10,9 +10,12 @@ import it.unipi.booknetapi.command.book.*;
 import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
 import it.unipi.booknetapi.command.review.ReviewCreateCommand;
+import it.unipi.booknetapi.command.user.ReaderAddBookToShelfCommand;
+import it.unipi.booknetapi.command.user.ReaderUpdateBookStatusInShelfCommand;
 import it.unipi.booknetapi.dto.book.*;
 import it.unipi.booknetapi.dto.review.ReviewCreateRequest;
 import it.unipi.booknetapi.dto.review.ReviewResponse;
+import it.unipi.booknetapi.dto.user.ReaderBookShelfUpdateStatusRequest;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
 import it.unipi.booknetapi.service.book.BookService;
@@ -221,6 +224,52 @@ public class BookController {
         ReviewResponse result = this.reviewService.saveReview(command);
 
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{idBook}/shelf")
+    @Operation(summary = "add a book to a shelf (Reader only)", description = "Add a book to a shelf.")
+    public ResponseEntity<String> addBookInShelf(
+            @PathVariable String idBook,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        ReaderAddBookToShelfCommand command = ReaderAddBookToShelfCommand.builder()
+                .idBook(idBook)
+                .userToken(userToken)
+                .build();
+
+        boolean added = this.bookService.addBookInShelf(command);
+
+        return ResponseEntity.ok(added ? "Book added successfully" : "Error adding book");
+    }
+
+    @PutMapping("/{idBook}/shelf")
+    @Operation(summary = "update a book status to a shelf (Reader only)", description = "Update a book status in shelf.")
+    public ResponseEntity<String> updateBookStatusInShelf(
+            @PathVariable String idBook,
+            @RequestBody ReaderBookShelfUpdateStatusRequest request,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        ReaderUpdateBookStatusInShelfCommand command = ReaderUpdateBookStatusInShelfCommand.builder()
+                .idBook(idBook)
+                .status(request.getStatus())
+                .userToken(userToken)
+                .build();
+
+        boolean updated = this.bookService.updateBookStatusInShelf(command);
+
+        return ResponseEntity.ok(updated ? "Book updated successfully" : "Error updating book");
     }
 
     @DeleteMapping("/{idBook}")

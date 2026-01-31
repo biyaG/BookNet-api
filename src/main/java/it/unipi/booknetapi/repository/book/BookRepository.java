@@ -906,6 +906,42 @@ public class BookRepository implements BookRepositoryInterface {
         return handleUpdateResult(updateResult, idBook);
     }
 
+    /**
+     * @param idBooks book's ids
+     * @return list of books with the given ids, or empty list if none found
+     */
+    @Override
+    public List<Book> findAll(List<String> idBooks) {
+        Objects.requireNonNull(idBooks);
+
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [MANY] books: {}", idBooks.size());
+
+        List<ObjectId> ids = idBooks.stream()
+                .filter(Objects::nonNull)
+                .filter(ObjectId::isValid)
+                .map(ObjectId::new)
+                .toList();
+
+        return this.find(ids);
+    }
+
+    /**
+     * @param idBooks book's ids
+     * @return list of books with the given ids, or empty list if none found
+     */
+    @Override
+    public List<Book> find(List<ObjectId> idBooks) {
+        Objects.requireNonNull(idBooks);
+
+        logger.debug("[REPOSITORY] [BOOk] [FIND] [MANY] books ids size: {}", idBooks.size());
+
+        if(idBooks.isEmpty()) return List.of();
+
+        return this.mongoCollection
+                .find(Filters.in("_id", idBooks))
+                .into(new ArrayList<>());
+    }
+
     @Override
     public boolean deleteAllBooks(List<ObjectId> idBooks){
         Objects.requireNonNull(idBooks);

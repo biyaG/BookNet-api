@@ -38,9 +38,6 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     private final Neo4jManager neo4jManager;
     private final MeterRegistry registry;
 
-    private static final String CACHE_PREFIX = "author:";
-    private static final int CACHE_TTL = 3600; // 1 hour
-
     public AuthorRepository(
             AppConfig appConfig,
             MongoClient mongoClient,
@@ -610,7 +607,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public List<Author> findAll(List<String> idAuthors) {
         Objects.requireNonNull(idAuthors);
 
-        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [MANY] authors: {}", idAuthors);
+        logger.debug("[REPOSITORY] [AUTHOR] [FIND] [MANY] authors: {}", idAuthors.size());
 
         List<ObjectId> ids = idAuthors.stream()
                 .filter(Objects::nonNull)
