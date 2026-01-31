@@ -11,6 +11,7 @@ import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.review.ReviewByBookListCommand;
 import it.unipi.booknetapi.command.review.ReviewCreateCommand;
 import it.unipi.booknetapi.command.user.ReaderAddBookToShelfCommand;
+import it.unipi.booknetapi.command.user.ReaderRemoveBookInShelfCommand;
 import it.unipi.booknetapi.command.user.ReaderUpdateBookStatusInShelfCommand;
 import it.unipi.booknetapi.dto.book.*;
 import it.unipi.booknetapi.dto.review.ReviewCreateRequest;
@@ -270,6 +271,28 @@ public class BookController {
         boolean updated = this.bookService.updateBookStatusInShelf(command);
 
         return ResponseEntity.ok(updated ? "Book updated successfully" : "Error updating book");
+    }
+
+    @DeleteMapping("/{idBook}/shelf")
+    @Operation(summary = "remove a book from a shelf (Reader only)", description = "Remove a book from a shelf.")
+    public ResponseEntity<String> removeBookFromShelf(
+            @PathVariable String idBook,
+            @RequestHeader("Authorization") String token
+    ) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        ReaderRemoveBookInShelfCommand command = ReaderRemoveBookInShelfCommand.builder()
+                .idBook(idBook)
+                .userToken(userToken)
+                .build();
+
+        boolean updated = this.bookService.removeBookFromShelf(command);
+
+        return ResponseEntity.ok(updated ? "Book removed successfully" : "Error removing book");
     }
 
     @DeleteMapping("/{idBook}")

@@ -15,7 +15,7 @@ public class WebConfig implements WebMvcConfigurer {
         configurer.addPathPrefix("/api", c -> c.isAnnotationPresent(RestController.class));
     }
 
-    @Override
+    /*@Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**") // Apply to all endpoints
                 // .allowedOrigins("*") // Allow all endpoints
@@ -23,6 +23,6 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // Allow these HTTP methods
                 .allowedHeaders("*") // Allow all headers
                 .allowCredentials(true); // Allow cookies/auth headers
-    }
+    }*/
 
 }

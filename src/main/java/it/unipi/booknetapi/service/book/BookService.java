@@ -2,6 +2,7 @@ package it.unipi.booknetapi.service.book;
 
 import it.unipi.booknetapi.command.book.*;
 import it.unipi.booknetapi.command.user.ReaderAddBookToShelfCommand;
+import it.unipi.booknetapi.command.user.ReaderRemoveBookInShelfCommand;
 import it.unipi.booknetapi.command.user.ReaderUpdateBookStatusInShelfCommand;
 import it.unipi.booknetapi.dto.book.BookEmbedResponse;
 import it.unipi.booknetapi.dto.book.BookRecommendationResponse;
@@ -230,6 +231,15 @@ public class BookService {
         }
 
         return updated;
+    }
+
+
+    public boolean removeBookFromShelf(ReaderRemoveBookInShelfCommand command) {
+        if(command.getUserToken() == null || command.getIdBook() == null) return false;
+
+        if(!ObjectId.isValid(command.getIdBook())) return false;
+
+        return this.userRepository.removeBookFromShelf(command.getUserToken().getIdUser(), command.getIdBook());
     }
 
 }
