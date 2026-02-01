@@ -163,6 +163,35 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         }
     }
 
+
+
+    /**
+     * @param names
+     * @return
+     */
+    @Override
+    public List<Author> insertUsingName(List<String> names) {
+        Objects.requireNonNull(names);
+
+        if(names.isEmpty()) return List.of();
+
+        List<Author> authors = names.stream()
+                .distinct()
+                .map(a -> Author.builder()
+                        .name(a)
+                        .description(null)
+                        .imageUrl(null)
+                        .books(List.of())
+                        .externalId(new ExternalId())
+                        .build()
+                )
+                .toList();
+
+        return insert(authors);
+    }
+
+
+
     /**
      * @param importedAuthors the authors to import
      */
@@ -323,14 +352,30 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         Objects.requireNonNull(idAuthor);
         Objects.requireNonNull(books);
 
+        if (books.isEmpty()) return false;
         if(!ObjectId.isValid(idAuthor)) return false;
+
+        return updateBooks(new ObjectId(idAuthor), books);
+    }
+
+    /**
+     * @param idAuthor author's id
+     * @param books books to update for the author
+     * @return true if the books were updated, false otherwise
+     */
+    @Override
+    public boolean updateBooks(ObjectId idAuthor, List<BookEmbed> books) {
+        Objects.requireNonNull(idAuthor);
+        Objects.requireNonNull(books);
+
+        if (books.isEmpty()) return false;
 
         logger.debug("[REPOSITORY] [AUTHOR] [SET BOOKS] author: {}, book size: {}", idAuthor, books.size());
 
         UpdateResult result = this.mongoCollection
                 .updateOne(
-                        Filters.eq("_id", new ObjectId(idAuthor)),
-                        Updates.set("books", books)
+                        Filters.eq("_id", idAuthor),
+                        Updates.addEachToSet("books", books)
                 );
 
         return result.getModifiedCount() > 0;
@@ -528,6 +573,21 @@ public class AuthorRepository implements AuthorRepositoryInterface {
             return Collections.emptyList();
         }
         return author.getBooks();
+    }
+
+    /**
+     * @param names
+     * @return
+     */
+    @Override
+    public List<Author> findAuthorsByNames(List<String> names) {
+        if (names == null || names.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        return this.mongoCollection
+                .find(Filters.in("name", names))
+                .into(new ArrayList<>());
     }
 
     @Override

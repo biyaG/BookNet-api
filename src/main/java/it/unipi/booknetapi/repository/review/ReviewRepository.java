@@ -343,7 +343,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
                         
                         // 2. Ensure Reader exists and update Name
                         MERGE (r:Reader {mid: item.userId})
-                        SET r.name = item.userName
+                        ON CREATE SET r.name = item.userName
                         
                         // FIX: You must bridge the Write (SET) and Read (MATCH) with WITH
                         // We pass 'r' (the reader) and 'item' (data for book/rating) forward

@@ -17,12 +17,15 @@ public interface AuthorRepositoryInterface {
     Author insert(Author author);
     List<Author> insert(List<Author> authors);
 
+    List<Author> insertUsingName(List<String> names);
+
     List<Author> importAuthors(List<AuthorGoodReads> importedAuthors);
 
     boolean updateDescription(String idAuthor, String newDescription);
     boolean updateImage(String idAuthor, String newImageUrl);
 
     boolean updateBooks(String idAuthor, List<BookEmbed> books);
+    boolean updateBooks(ObjectId idAuthor, List<BookEmbed> books);
     boolean addBook(String idAuthor, BookEmbed book);
     boolean removeBook(String idAuthor, String idBook);
 
@@ -37,6 +40,7 @@ public interface AuthorRepositoryInterface {
     List<Author> findAll(List<String> idAuthors);
     List<Author> find(List<ObjectId> idAuthors);
     List<BookEmbed> findBooksByAuthor(String authorId);
+    List<Author> findAuthorsByNames(List<String> names);
 
     List<Author> findByExternGoodReadIds(List<String> idAuthors);
 

@@ -1,5 +1,6 @@
 package it.unipi.booknetapi.repository.book;
 
+import it.unipi.booknetapi.dto.book.BookCsvRecordWithAuthor;
 import it.unipi.booknetapi.dto.book.BookGoodReads;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.book.Book;
@@ -18,8 +19,10 @@ public interface BookRepositoryInterface {
     Book save(Book book);
     List<Book> saveAll(List<Book> books);
 
-    List<Book> importBooks(List<BookGoodReads> books);
+    List<Book> importBooksFromGoodReads(List<BookGoodReads> books);
     void importBooksAuthors(Map<ObjectId, List<AuthorEmbed>> bookAuthors);
+
+    List<Book> importBooksFromKaggle(List<BookCsvRecordWithAuthor> booksKaggle);
 
     boolean deleteBook(String idBook);
     boolean deleteAllBooks(List<ObjectId> idBooks);

@@ -39,6 +39,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -192,6 +193,67 @@ public class ImportService {
                     }
                 }
             }
+            case KAGGLE -> {
+                switch (command.getImportEntityType()) {
+                    case BOOK -> {
+                        List<BookCsvRecord> books;
+                        try {
+                            books = BookCsvReader.readBooks(command.getFile());
+                        } catch (Exception e) {
+                            return "Error during read file";
+                        }
+
+                        ParameterFetch<BookCsvRecord> parameterFetch = ParameterFetch.<BookCsvRecord>builder()
+                                .idUser(command.getUserToken().getIdUser())
+                                .source(command.getSource())
+                                .entityType(EntityType.BOOK)
+                                .fileUrl(fileUrl)
+                                .fileName(fileName)
+                                .fileContentType(fileContentType)
+                                .data(books)
+                                .build();
+
+                        processSaveImport(parameterFetch, this::importKaggleCsvBooks);
+
+                        return "Successfully processed import books";
+                    }
+
+                    default -> {
+                        return "Unknown entity type";
+                    }
+                }
+            }
+
+            case GOOGLE_BOOKS -> {
+                switch (command.getImportEntityType()) {
+                    case BOOK -> {
+                        List<GoogleBookCsvRecord> books;
+                        try {
+                            books = BookCsvReader.readGoogleBooks(command.getFile());
+                        } catch (Exception e) {
+                            return "Error during read file";
+                        }
+
+                        ParameterFetch<GoogleBookCsvRecord> parameterFetch = ParameterFetch.<GoogleBookCsvRecord>builder()
+                                .idUser(command.getUserToken().getIdUser())
+                                .source(command.getSource())
+                                .entityType(EntityType.BOOK)
+                                .fileUrl(fileUrl)
+                                .fileName(fileName)
+                                .fileContentType(fileContentType)
+                                .data(books)
+                                .build();
+
+                        processSaveImport(parameterFetch, this::importGoogleCsvBooks);
+
+                        return "Successfully processed import books";
+                    }
+
+                    default -> {
+                        return "Unknown entity type";
+                    }
+                }
+            }
 
             default -> {
                 return "Unknown source";
@@ -299,7 +361,7 @@ public class ImportService {
                                         && b.getBookId() != null && !b.getBookId().isBlank()
                 ).toList();
 
-        List<Book> bookList = this.bookRepository.importBooks(goodBooks);
+        List<Book> bookList = this.bookRepository.importBooksFromGoodReads(goodBooks);
 
         logFetch(
                 parameterFetch,
@@ -665,6 +727,104 @@ public class ImportService {
         );
 
         logger.debug("[SERVICE] [IMPORT] [GOOD READS] [REVIEWS] Importing GoodReads reviews completed.");
+    }
+
+
+
+
+    private void importKaggleCsvBooks(ParameterFetch<BookCsvRecord> parameterFetch) {
+
+        List<BookCsvRecord> goodBooks = parameterFetch.getData()
+                .stream()
+                .filter(
+                        b -> b.getTitle() != null && !b.getTitle().isBlank()
+                                && b.getIsbn() != null && !b.getIsbn().isBlank()
+                                && b.getIsbn13() != null && !b.getIsbn13().isBlank()
+                                && b.getAuthors() != null && !b.getAuthors().isEmpty()
+                )
+                .toList();
+
+        List<String> authorNames = goodBooks.stream()
+                .map(BookCsvRecord::getAuthors)
+                .filter(Objects::nonNull)
+                .flatMap(List::stream)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        List<Author> existingAuthors = this.authorRepository.findAuthorsByNames(authorNames);
+
+        List<String> newAuthorNames = authorNames.stream()
+                .filter(name -> existingAuthors.stream().noneMatch(author -> author.getName().equals(name)))
+                .toList();
+
+        List<Author> authors = this.authorRepository.insertUsingName(newAuthorNames);
+        Map<String, Author> mapNameAuthor = authors.stream()
+                .collect(Collectors.toMap(
+                        Author::getName,
+                        Function.identity(),
+                        (existing, newOne) -> existing
+                ));
+
+        List<BookCsvRecordWithAuthor> bookToInserts = new ArrayList<>(goodBooks.size());
+        for(BookCsvRecord book : goodBooks) {
+            List<Author> authorList = book.getAuthors().stream()
+                    .map(mapNameAuthor::get)
+                    .filter(Objects::nonNull)
+                    .toList();
+            bookToInserts.add(new BookCsvRecordWithAuthor(book, authorList));
+        }
+
+        List<Book> bookList = this.bookRepository.importBooksFromKaggle(bookToInserts);
+
+        /*Map<String, Book> mapBook = bookList.stream()
+                .collect(Collectors.toMap(
+                        b -> b.getExternalId().getKaggle(),
+                        Function.identity(),
+                        (existing, newOne) -> existing
+                ));
+        */
+
+        Map<ObjectId, List<BookEmbed>> authorBooks = new HashMap<>();
+        for(Book book : bookList) {
+            if(book.getAuthors() != null && !book.getAuthors().isEmpty()) {
+                for(AuthorEmbed authorEmbed: book.getAuthors()) {
+                    if(!authorBooks.containsKey(authorEmbed.getId())) authorBooks.put(authorEmbed.getId(), new ArrayList<>());
+                    authorBooks.get(authorEmbed.getId()).add(new BookEmbed(book));
+                }
+            }
+        }
+
+        for(Map.Entry<ObjectId, List<BookEmbed>> entry : authorBooks.entrySet()) {
+            this.authorRepository.updateBooks(entry.getKey(), entry.getValue());
+        }
+
+        logFetch(
+                parameterFetch,
+                (long) parameterFetch.getData().size(),
+                (long) bookList.size(),
+                bookList.stream().map(Book::getId).toList(),
+                true,
+                "Successfully processed " + parameterFetch.getData().size() + " books."
+        );
+    }
+
+
+    private void importGoogleCsvBooks(ParameterFetch<GoogleBookCsvRecord> parameterFetch) {
+
+        // Don't have isbn, isbn13 so impossible to process the import
+
+        /*List<GoogleBookCsvRecord> goodBooks = parameterFetch.getData()
+                .stream()
+                .filter(
+                        b -> b.getTitle() != null && !b.getTitle().isBlank()
+                                && b.getIsbn() != null && !b.getIsbn().isBlank()
+                                && b.getIsbn13() != null && !b.getIsbn13().isBlank()
+                                && b.getAuthors() != null && !b.getAuthors().isEmpty()
+                )
+                .toList();
+        */
+
     }
 
 

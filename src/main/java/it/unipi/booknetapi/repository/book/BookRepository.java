@@ -8,6 +8,8 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
+import it.unipi.booknetapi.dto.book.BookCsvRecord;
+import it.unipi.booknetapi.dto.book.BookCsvRecordWithAuthor;
 import it.unipi.booknetapi.dto.book.BookGoodReads;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
 import it.unipi.booknetapi.model.book.BookRecommendation;
@@ -167,7 +169,7 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     @Override
-    public List<Book> importBooks(List<BookGoodReads> importedBooks) {
+    public List<Book> importBooksFromGoodReads(List<BookGoodReads> importedBooks) {
         Objects.requireNonNull(importedBooks);
 
 
@@ -180,7 +182,7 @@ public class BookRepository implements BookRepositoryInterface {
 
             List<BookGoodReads> booksBatch = importedBooks.subList(i, endIndex);
 
-            List<ObjectId> ids = bulkUpSet(booksBatch);
+            List<ObjectId> ids = bulkUpSetGoodReads(booksBatch);
 
             List<Map<String, Object>> neo4jBatch = new ArrayList<>();
 
@@ -296,7 +298,7 @@ public class BookRepository implements BookRepositoryInterface {
 
     }
 
-    private List<ObjectId> bulkUpSet(List<BookGoodReads> booksGoodReads) {
+    private List<ObjectId> bulkUpSetGoodReads(List<BookGoodReads> booksGoodReads) {
         logger.debug("[REPOSITORY] [BOOK] [IMPORT] [MONGODB] Importing {} books from GoodReads", booksGoodReads.size());
 
         List<WriteModel<Book>> writes = new ArrayList<>();
@@ -446,14 +448,140 @@ public class BookRepository implements BookRepositoryInterface {
 
     }
 
-    private Book BookWrittenByAuthorRelationship(Book book){
-        Objects.requireNonNull(book);
 
-        this.registry.timer("neo4j.ops", "query", "BookWrittenByAuthorRelationship").record(() -> {
-//            String cypher = ""
+    /**
+     * @param booksKaggle
+     * @return
+     */
+    @Override
+    public List<Book> importBooksFromKaggle(List<BookCsvRecordWithAuthor> booksKaggle) {
+        logger.debug("[REPOSITORY] [BOOK] [IMPORT] [MONGODB] Importing {} books from Kaggle", booksKaggle.size());
+
+
+        List<Book> allBooks = new ArrayList<>(booksKaggle.size());
+        for(int i=0; i < booksKaggle.size(); i += this.batchSize) {
+            int endIndex = Math.min(i + this.batchSize, booksKaggle.size());
+
+            List<BookCsvRecordWithAuthor> importedBooks = booksKaggle.subList(i, endIndex);
+
+            List<WriteModel<Book>> writes = new ArrayList<>(importedBooks.size());
+
+            for(BookCsvRecordWithAuthor bookKaggle : importedBooks){
+                List<Bson> updates = new ArrayList<>();
+                updates.add(Updates.set("externalId.kaggle", String.valueOf(bookKaggle.getBookId())));
+
+                updates.add(Updates.setOnInsert("isbn13", bookKaggle.getIsbn13()));
+                updates.add(Updates.setOnInsert("title", bookKaggle.getTitle()));
+
+                if(bookKaggle.getPublicationDate() != null) {
+                    updates.add(Updates.set("publicationYear", bookKaggle.getPublicationDate().getYear()));
+                    updates.add(Updates.set("publicationMonth", bookKaggle.getPublicationDate().getMonthValue()));
+                    updates.add(Updates.set("publicationDay", bookKaggle.getPublicationDate().getDayOfMonth()));
+                }
+
+                if(bookKaggle.getLanguageCode() != null) {
+                    updates.add(Updates.addToSet("languages", bookKaggle.getLanguageCode()));
+                }
+
+                addIfPresent(updates, "publishers", bookKaggle.getPublisher());
+
+                updates.add(Updates.setOnInsert("ratingReview.rating", (float) bookKaggle.getAverageRating()));
+                updates.add(Updates.setOnInsert("ratingReview.count", bookKaggle.getRatingsCount()));
+
+                writes.add(new UpdateOneModel<>(
+                        Filters.eq("isbn", bookKaggle.getIsbn()),
+
+                        Updates.combine(updates),
+
+                        new UpdateOptions().upsert(true)
+                ));
+
+                BulkWriteResult result = this.mongoCollection
+                        .bulkWrite(writes, new BulkWriteOptions().ordered(false));
+
+                List<ObjectId> objectIds = result.getUpserts()
+                        .stream()
+                        .map(upsert -> upsert.getId().asObjectId().getValue())
+                        .toList();
+
+                logger.debug("[REPOSITORY] [BOOK] [IMPORT] [MONGODB] writes {} books", objectIds.size());
+
+                List<Book> books = this.mongoCollection
+                        .find(Filters.in("_id", objectIds))
+                        .into(new ArrayList<>());
+
+                saveBooksToNeo4jV2(books);
+
+                allBooks.addAll(books);
+            }
+        }
+
+        logger.debug("[REPOSITORY] [BOOK] [IMPORT] [MONGODB AND NEO4J] writes {} books", allBooks.size());
+
+        return allBooks;
+    }
+
+    private void saveBooksToNeo4jV2(List<Book> books) {
+        if (books == null || books.isEmpty()) return;
+
+        logger.debug("[REPOSITORY] [BOOK] [IMPORT] [NEO4J] writes {} books", books.size());
+
+        List<Map<String, Object>> neo4jBatch = books.stream()
+                .map(book -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("bookId", book.getId().toHexString());
+                    map.put("title", book.getTitle());
+                    map.put("ratingAvg", book.getRatingReview());
+
+                    List<Map<String, String>> authorsData = new ArrayList<>();
+                    if (book.getAuthors() != null) {
+                        for (AuthorEmbed author : book.getAuthors()) {
+                            // Ensure we have an ID to map
+                            if (author.getId() != null) {
+                                authorsData.add(Map.of(
+                                        "id", author.getId().toHexString(),
+                                        "name", author.getName() != null ? author.getName() : ""
+                                ));
+                            }
+                        }
+                    }
+                    map.put("authors", authorsData);
+
+                    return map;
+                })
+                .toList();
+
+        if (neo4jBatch.isEmpty()) return;
+
+        this.registry.timer("neo4j.ops", "query", "save_books_authors").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    String cypher = """
+                    UNWIND $batch as row
+                    
+                    // 1. Merge the Book (Create if missing, update props)
+                    MERGE (b:Book {mid: row.bookId})
+                    SET b.title = row.title,
+                        b.ratingAvg = row.ratingAvg
+                    
+                    // 2. Unwind the nested authors list
+                    // 'WITH' passes the current book 'b' and the data 'row' to the next step
+                    WITH b, row
+                    UNWIND row.authors as authorData
+                    
+                    // 3. Merge the Author (Create if missing)
+                    MERGE (a:Author {mid: authorData.id})
+                    ON CREATE SET a.name = authorData.name
+                    
+                    // 4. Create the Relationship
+                    MERGE (a)-[:WROTE]->(b)
+                    """;
+
+                    tx.run(cypher, Values.parameters("batch", neo4jBatch));
+                    return null;
+                });
+            }
         });
-
-        return Objects.requireNonNull(book); ///
     }
 
     @Override
@@ -697,7 +825,7 @@ public class BookRepository implements BookRepositoryInterface {
             }
 
             // Process this specific batch in its own transaction context
-            boolean batchSuccess = bulkUpSet(currentBatch);
+            boolean batchSuccess = bulkUpSetGoodReads(currentBatch);
             if (!batchSuccess) {
                 allBatchesSuccess = false;
                 // Optional: break; if you want to stop immediately on first error
@@ -707,7 +835,7 @@ public class BookRepository implements BookRepositoryInterface {
         return allBatchesSuccess;
     }
 
-    private boolean bulkUpSet(Map<String, List<BookEmbed>> batch) {
+    private boolean bulkUpSetGoodReads(Map<String, List<BookEmbed>> batch) {
         logger.debug("[REPOSITORY] [BOOK] [IMPORT] [BOOK SIMILARITY] Importing {} books from GoodReads", batch.size());
 
 
