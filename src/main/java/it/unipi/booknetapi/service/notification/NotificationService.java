@@ -1,6 +1,7 @@
 package it.unipi.booknetapi.service.notification;
 
 import it.unipi.booknetapi.command.notification.*;
+import it.unipi.booknetapi.dto.notification.NotificationEmbedResponse;
 import it.unipi.booknetapi.dto.notification.NotificationResponse;
 import it.unipi.booknetapi.model.notification.Notification;
 import it.unipi.booknetapi.model.notification.NotificationEmbed;
@@ -53,16 +54,16 @@ public class NotificationService {
         );
     }
 
-    public List<NotificationResponse> get(NotificationLastestCommand command) {
+    public List<NotificationEmbedResponse> get(NotificationLastestCommand command) {
         if(command.getIdUser() == null) return null;
 
         User user = this.userRepository.findById(command.getIdUser()).orElse(null);
         if(user == null) return null;
 
         if(user instanceof Admin admin) {
-            if(admin.getNotifications() == null || admin.getNotifications().isEmpty()) return new ArrayList<>();
-            List<Notification> notifications = this.notificationRepository.findByOIds(admin.getNotifications());
-            return notifications.stream().map(NotificationResponse::new).toList();
+            if(admin.getLastNotifications() == null || admin.getLastNotifications().isEmpty()) return new ArrayList<>();
+
+            return admin.getLastNotifications().stream().map(NotificationEmbedResponse::new).toList();
         }
 
         return null;

@@ -365,13 +365,13 @@ public class UserRepository implements UserRepositoryInterface {
         List<Map<String, Object>> genreList = preference.getGenres() == null ? Collections.emptyList() :
                 preference.getGenres().stream()
                         .filter(g -> g.getId() != null) // Safety check
-                        .map(g -> Map.<String, Object>of("id", g.getId(), "name", g.getName()))
+                        .map(g -> Map.<String, Object>of("id", g.getId().toHexString(), "name", g.getName()))
                         .toList();
 
         List<Map<String, Object>> authorList = preference.getAuthors() == null ? Collections.emptyList() :
                 preference.getAuthors().stream()
                         .filter(a -> a.getId() != null)
-                        .map(a -> Map.<String, Object>of("id", a.getId(), "name", a.getName()))
+                        .map(a -> Map.<String, Object>of("id", a.getId().toHexString(), "name", a.getName()))
                         .toList();
 
         this.registry.timer("neo4j.ops", "query", "update_reader").record(() -> {

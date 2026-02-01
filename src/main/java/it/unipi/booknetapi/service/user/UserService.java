@@ -102,7 +102,7 @@ public class UserService {
         return this.get(UserGetCommand.builder().id(command.getUserToken().getIdUser()).userToken(command.getUserToken()).build());
     }
 
-    public ReaderResponse update(ReaderUpdatePreferenceCommand command) {
+    public ReaderPreferenceResponse update(ReaderUpdatePreferenceCommand command) {
         if(command.getUserToken() == null || command.getUserToken().getIdUser() == null) return null;
 
         List<Author> authors = this.authorRepository.findAllById(command.getAuthors());
@@ -121,7 +121,9 @@ public class UserService {
         User user =  this.userRepository.findById(command.getUserToken().getIdUser())
                 .orElse(null);
 
-        return new ReaderResponse(user);
+        if(user == null || user.getRole() != Role.Reader) return null;
+
+        return new ReaderPreferenceResponse(((Reader) user).getPreference());
     }
 
 

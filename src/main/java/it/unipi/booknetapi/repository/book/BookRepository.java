@@ -1012,7 +1012,7 @@ public class BookRepository implements BookRepositoryInterface {
 
         if(!ObjectId.isValid(idBook)) return false;
 
-        logger.debug("[REPOSITORY] [BOOK] [ADD GENRE] author: {}, book: {}", idBook, genre.getId());
+        logger.debug("[REPOSITORY] [BOOK] [ADD GENRE] author: {}, book: {}", idBook, genre.getId().toHexString());
 
         UpdateResult updateResult = this.mongoCollection.updateMany(
                 Filters.eq("_id", new ObjectId(idBook)),

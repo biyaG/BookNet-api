@@ -4,6 +4,7 @@ package it.unipi.booknetapi.controller.notification;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import it.unipi.booknetapi.command.notification.*;
+import it.unipi.booknetapi.dto.notification.NotificationEmbedResponse;
 import it.unipi.booknetapi.dto.notification.NotificationResponse;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
@@ -69,7 +70,7 @@ public class NotificationController {
 
     @GetMapping("/latest")
     @Operation(summary = "Get latest notifications (Admin only)")
-    public ResponseEntity<List<NotificationResponse>> getLatestNotifications(@RequestHeader("Authorization") String token) {
+    public ResponseEntity<List<NotificationEmbedResponse>> getLatestNotifications(@RequestHeader("Authorization") String token) {
         UserToken userToken = this.authService.getUserToken(token);
 
         if(userToken == null || userToken.getRole() != Role.Admin) {
@@ -81,7 +82,7 @@ public class NotificationController {
                 .userToken(userToken)
                 .build();
 
-        List<NotificationResponse> notifications = this.notificationService.get(command);
+        List<NotificationEmbedResponse> notifications = this.notificationService.get(command);
 
         if(notifications == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         return ResponseEntity.ok(notifications);

@@ -42,7 +42,9 @@ public class MongoManager {
                                 "it.unipi.booknetapi.model.book",
                                 "it.unipi.booknetapi.model.fetch",
                                 "it.unipi.booknetapi.model.genre",
+                                "it.unipi.booknetapi.model.notification",
                                 "it.unipi.booknetapi.model.review",
+                                "it.unipi.booknetapi.model.stat",
                                 "it.unipi.booknetapi.model.user"
                         )
                         .build()

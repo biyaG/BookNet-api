@@ -223,7 +223,7 @@ public class UserController {
 
     @PostMapping("/preference")
     @Operation(summary = "update user")
-    public ResponseEntity<ReaderResponse> updatePreference(
+    public ResponseEntity<ReaderPreferenceResponse> updatePreference(
             @RequestBody ReaderPreferenceRequest request,
             @RequestHeader("Authorization") String token
     ) {
@@ -240,10 +240,10 @@ public class UserController {
                 .languages(request.getLanguages())
                 .build();
 
-        ReaderResponse readerResponse = this.userService.update(command);
+        ReaderPreferenceResponse readerPreferenceResponse = this.userService.update(command);
 
-        if(readerResponse == null) return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        return ResponseEntity.ok(readerResponse);
+        if(readerPreferenceResponse == null) return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        return ResponseEntity.ok(readerPreferenceResponse);
     }
 
     @GetMapping("/{idUser}")

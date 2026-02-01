@@ -96,7 +96,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                             tx.run(
                                     cypher,
                                     Values.parameters(
-                                            "id", author.getId(),
+                                            "id", author.getId().toHexString(),
                                             "name", author.getName()
                                     )
                             );
@@ -143,7 +143,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         List<Map<String, Object>> neo4jBatch = new ArrayList<>();
 
         authors.forEach(author -> {
-            neo4jBatch.add(Map.of("id", author.getId(), "name", author.getName()));
+            neo4jBatch.add(Map.of("id", author.getId().toHexString(), "name", author.getName()));
         });
 
         if(!neo4jBatch.isEmpty()) {
@@ -393,7 +393,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         if(!ObjectId.isValid(idAuthor)) return false;
 
-        logger.debug("[REPOSITORY] [AUTHOR] [ADD BOOK] author: {}, book: {}", idAuthor, book.getId());
+        logger.debug("[REPOSITORY] [AUTHOR] [ADD BOOK] author: {}, book: {}", idAuthor, book.getId().toHexString());
 
         UpdateResult result = this.mongoCollection
                 .updateOne(
@@ -771,7 +771,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J] Migration complete.");
     }*/
 
-    private List<AuthorStats> handleFindFromNeo4J(String query, int limit) {
+    private List<AuthorStats> handleFindFromNeo4J(String query, int limit, String thirdParameterName) {
         try (Session session = this.neo4jManager.getDriver().session()) {
             return session.executeRead(tx -> {
                 var result = tx.run(query, Values.parameters("limit", limit));
@@ -779,7 +779,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                 return result.list(record -> AuthorStats.builder()
                         .id(record.get("id").asString())
                         .name(record.get("name").asString())
-                        .count(record.get("followers").asLong())
+                        .count(record.get(thirdParameterName).asLong())
                         .build()
                 );
             });
@@ -805,7 +805,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
             LIMIT $limit
             """;
 
-        return handleFindFromNeo4J(query, limit);
+        return handleFindFromNeo4J(query, limit, "bookCount");
     }
 
     /**
@@ -826,7 +826,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
             LIMIT $limit
             """;
 
-        return handleFindFromNeo4J(query, limit);
+        return handleFindFromNeo4J(query, limit, "followers");
     }
 
     /**
@@ -847,7 +847,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         LIMIT $limit
         """;
 
-        return handleFindFromNeo4J(query, limit);
+        return handleFindFromNeo4J(query, limit, "readCount");
     }
 
     /**

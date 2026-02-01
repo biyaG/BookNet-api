@@ -10,23 +10,14 @@ import java.util.Date;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class NotificationResponse {
-
-    private String idNotification;
-
-    private String title;
-    private String message;
-
-    private Date createdAt;
+@EqualsAndHashCode(callSuper = true)
+public class NotificationResponse extends NotificationEmbedResponse {
 
     private Boolean read;
 
-
     public NotificationResponse(Notification notification) {
-        this.idNotification = notification.getId().toHexString();
-        this.title = notification.getTitle();
-        this.message = notification.getMessage();
-        this.createdAt = notification.getCreatedAt();
+        super(notification);
         this.read = notification.getRead();
     }
+
 }
