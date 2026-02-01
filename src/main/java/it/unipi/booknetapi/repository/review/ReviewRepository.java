@@ -54,7 +54,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
             Neo4jManager neo4jManager,
             MeterRegistry registry
     ) {
-        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 100;
+        this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 50;
 
         this.mongoClient = mongoClient;
         this.mongoCollection = mongoDatabase.getCollection("reviews", Review.class);

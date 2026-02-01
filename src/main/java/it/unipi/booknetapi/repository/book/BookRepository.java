@@ -495,7 +495,9 @@ public class BookRepository implements BookRepositoryInterface {
 
                         new UpdateOptions().upsert(true)
                 ));
+            }
 
+            if(!writes.isEmpty()) {
                 BulkWriteResult result = this.mongoCollection
                         .bulkWrite(writes, new BulkWriteOptions().ordered(false));
 
