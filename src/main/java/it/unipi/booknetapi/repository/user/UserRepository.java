@@ -656,7 +656,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idUser)),
-                Updates.pull("shelf", Filters.eq("id", new ObjectId(idBook)))
+                Updates.pull("shelf", Filters.eq("_id", new ObjectId(idBook)))
         );
 
         if(updateResult.getModifiedCount() > 0) {
@@ -708,7 +708,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         Bson filter = Filters.and(
                 Filters.eq("_id", userId),
-                Filters.eq("shelf.book.id", book.getId())
+                Filters.eq("shelf.book._id", book.getId())
         );
 
         var updateStatus = Updates.combine(
@@ -718,7 +718,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         UpdateResult result = this.readerCollection.updateOne(filter, updateStatus);
 
-        if (result.getModifiedCount() == 0) return this.addBookInShelf(idUser, book);
+        if (result.getMatchedCount() == 0) return this.addBookInShelf(idUser, book);
 
         updateShelfStatusNeo4j(idUser, book, newStatus);
 
@@ -832,9 +832,9 @@ public class UserRepository implements UserRepositoryInterface {
         UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.and(
                     Filters.eq("_id", new ObjectId(idUser)),
-                    Filters.elemMatch("reviews", Filters.eq("$id", new ObjectId(idReview)))
+                    Filters.elemMatch("reviews", Filters.eq("$_id", new ObjectId(idReview)))
                 ),
-                Updates.pull("reviews", Filters.eq("$id", new ObjectId(idReview)))
+                Updates.pull("reviews", Filters.eq("$_id", new ObjectId(idReview)))
         );
 
         if(updateResult.getModifiedCount() > 0) {
@@ -913,7 +913,7 @@ public class UserRepository implements UserRepositoryInterface {
         Bson update = Updates.combine(
                 Updates.pull("notifications", oidNotification),
 
-                Updates.pull("lastNotifications", Filters.eq("id", oidNotification))
+                Updates.pull("lastNotifications", Filters.eq("_id", oidNotification))
         );
 
         UpdateResult result = this.userCollection.updateOne(Filters.eq("_id", oidUser), update);
@@ -947,7 +947,7 @@ public class UserRepository implements UserRepositoryInterface {
             Bson update = Updates.combine(
                     Updates.pullAll("notifications", notificationIds),
 
-                    Updates.pull("lastNotifications", Filters.in("id", notificationIds))
+                    Updates.pull("lastNotifications", Filters.in("_id", notificationIds))
             );
 
             UpdateResult result = this.userCollection.updateOne(
@@ -1271,10 +1271,17 @@ public class UserRepository implements UserRepositoryInterface {
             logger.debug("[REPOSITORY] [READER] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
 
             List<Reader> readers = this.readerCollection
-                    .find(Filters.gt("_id", lastId))
+                    .find(
+                            Filters.and(
+                                    Filters.gt("_id", lastId),
+                                    Filters.eq("role", Role.Reader.name())
+                            )
+                    )
                     .limit(this.batchSize)
-                    .into(new ArrayList<>()).stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
-                    .toList();
+                    .into(new ArrayList<>())
+                    // .stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
+                    // .toList()
+                    ;
 
             if(readers.isEmpty()) break;
 
@@ -1416,10 +1423,17 @@ public class UserRepository implements UserRepositoryInterface {
             logger.debug("[REPOSITORY] [REVIEWER] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
 
             List<Reviewer> reviewers = this.reviewerCollection
-                    .find(Filters.gt("_id", lastId))
+                    .find(
+                            Filters.and(
+                                    Filters.gt("_id", lastId),
+                                    Filters.eq("role", Role.Reviewer.name())
+                            )
+                    )
                     .limit(this.batchSize)
-                    .into(new ArrayList<>()).stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
-                    .toList();
+                    .into(new ArrayList<>())
+                    // .stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
+                    // .toList()
+                    ;
 
             if(reviewers.isEmpty()) break;
 

@@ -161,6 +161,14 @@ public class UserService {
     }
 
 
+    public List<UserBookShelfResponse> getBooksInShelf(ReaderShelfGetCommand command) {
+        if(command.getUserToken() == null) return null;
+
+        List<UserBookShelf> books = this.userRepository.getShelf(command.getUserToken().getIdUser());
+        if(books == null) return null;
+
+        return books.stream().map(UserBookShelfResponse::new).toList();
+    }
 
 
 

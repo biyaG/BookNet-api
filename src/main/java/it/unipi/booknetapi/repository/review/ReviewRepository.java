@@ -727,13 +727,13 @@ public class ReviewRepository implements ReviewRepositoryInterface {
         int skip = page * size;
 
         List<Review> reviews = this.mongoCollection
-                .find(Filters.eq("user.id", new ObjectId(idReader)))
+                .find(Filters.eq("user._id", new ObjectId(idReader)))
                 .skip(skip)
                 .limit(size)
                 .into(new ArrayList<>());
 
         long total = this.mongoCollection
-                .countDocuments(Filters.eq("user.id", new ObjectId(idReader)));
+                .countDocuments(Filters.eq("user._id", new ObjectId(idReader)));
 
         return new PageResult<>(reviews, total, page, size);
     }

@@ -275,6 +275,25 @@ public class UserController {
     }
 
 
+    @GetMapping("/me/shelf")
+    @Operation(summary = "Get current user shelf (Reader only)")
+    public ResponseEntity<List<UserBookShelfResponse>> getUserShelf(@RequestHeader("Authorization") String token) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Reader) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        ReaderShelfGetCommand command = ReaderShelfGetCommand.builder()
+                .userToken(userToken)
+                .build();
+
+        List<UserBookShelfResponse> shelf = this.userService.getBooksInShelf(command);
+        if(shelf == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        return ResponseEntity.ok(shelf);
+    }
+
+
     @GetMapping("/reader/{idUser}")
     @Operation(summary = "Get user information")
     @SecurityRequirements(value = {})
