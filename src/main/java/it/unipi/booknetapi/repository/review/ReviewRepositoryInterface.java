@@ -28,4 +28,7 @@ public interface ReviewRepositoryInterface {
     PageResult<Review> findByReader(String idReader, int page, int size);
     PageResult<Review> findAll(int page, int size);
 
+
+    void migrate();
+
 }

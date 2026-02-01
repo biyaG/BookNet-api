@@ -174,6 +174,23 @@ public class BookController {
         return ResponseEntity.ok(this.importService.importData(command));
     }
 
+
+
+    @GetMapping("/migrate")
+    @Operation(summary = "Migrate book from mongodb to neo4j (Admin only)", description = "Migrates all books from mongodb to neo4j.")
+    public ResponseEntity<String> migrateBooks(@RequestHeader("Authorization") String token) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        this.bookService.migrate();
+
+        return ResponseEntity.ok("Starting migration");
+    }
+
+
     @GetMapping("/{idBook}")
     @Operation(summary = "Get book Information")
     @SecurityRequirements(value = {})

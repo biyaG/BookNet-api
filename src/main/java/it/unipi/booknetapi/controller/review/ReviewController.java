@@ -86,6 +86,24 @@ public class ReviewController {
         return ResponseEntity.ok(this.importService.importData(command));
     }
 
+
+
+    @GetMapping("/migrate")
+    @Operation(summary = "Migrate review from mongodb to neo4j (Admin only)", description = "Migrates all reviews from mongodb to neo4j.")
+    public ResponseEntity<String> migrateGenres(@RequestHeader("Authorization") String token) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        this.reviewService.migrate();
+
+        return ResponseEntity.ok("Starting migration");
+    }
+
+
+
     @GetMapping("/{idReview}")
     @Operation(summary = "Get Review by ID")
     @SecurityRequirements(value = {})

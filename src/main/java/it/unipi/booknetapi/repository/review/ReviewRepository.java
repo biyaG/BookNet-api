@@ -757,4 +757,30 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
         return new PageResult<>(reviews, total, page, size);
     }
+
+    /**
+     *
+     */
+    @Override
+    public void migrate() {
+        logger.debug("[REPOSITORY] [REVIEW] [MIGRATE] [BEGIN]");
+
+        long total = this.mongoCollection
+                .countDocuments();
+
+        int totalPages = (int) Math.ceil((double) total / this.batchSize);
+
+        for(int page = 0; page < totalPages; page++) {
+            int skip = page * this.batchSize;
+            List<Review> reviews = this.mongoCollection
+                    .find()
+                    .skip(skip)
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            saveReviewToNeo4j(reviews);
+        }
+
+        logger.debug("[REPOSITORY] [REVIEW] [MIGRATE] [BEGIN] [END]");
+    }
 }

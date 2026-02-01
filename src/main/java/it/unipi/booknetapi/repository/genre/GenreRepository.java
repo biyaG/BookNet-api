@@ -451,7 +451,7 @@ public class GenreRepository implements GenreRepositoryInterface {
      */
     @Override
     public void migrate() {
-        logger.debug("[REPOSITORY] [GENRE] [MIGRATE]");
+        logger.debug("[REPOSITORY] [GENRE] [MIGRATE] [BEGIN]");
 
         long total = this.mongoCollection
                 .countDocuments();
@@ -468,6 +468,8 @@ public class GenreRepository implements GenreRepositoryInterface {
 
             saveGenresInNeo4j(genres);
         }
+
+        logger.debug("[REPOSITORY] [GENRE] [MIGRATE] [END]");
     }
 
 }

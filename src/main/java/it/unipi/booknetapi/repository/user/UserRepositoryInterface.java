@@ -51,4 +51,6 @@ public interface UserRepositoryInterface {
     void migrateReaders();
     void migrateReviewers();
 
+    void migrate();
+
 }

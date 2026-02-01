@@ -31,6 +31,11 @@ public class GenreService {
         this.genreRepository = genreRepository;
     }
 
+    public void migrate() {
+        Thread thread = new Thread(this.genreRepository::migrate);
+        thread.start();
+    }
+
 
     public GenreResponse saveGenre(GenreCreateCommand command) {
         if(command.getName() == null || command.getName().isBlank()) return null;

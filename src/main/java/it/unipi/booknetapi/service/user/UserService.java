@@ -4,40 +4,32 @@ import it.unipi.booknetapi.command.stat.UserMonthlyStatGetCommand;
 import it.unipi.booknetapi.command.stat.UserMonthlyStatListCommand;
 import it.unipi.booknetapi.command.stat.UserYearlyStatGetCommand;
 import it.unipi.booknetapi.command.user.*;
-import it.unipi.booknetapi.dto.book.BookEmbedResponse;
 import it.unipi.booknetapi.dto.stat.UserMonthlyStatResponse;
 import it.unipi.booknetapi.dto.stat.UserYearlyStatResponse;
 import it.unipi.booknetapi.dto.user.*;
 import it.unipi.booknetapi.model.author.Author;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
-import it.unipi.booknetapi.model.book.Book;
 import it.unipi.booknetapi.model.genre.Genre;
 import it.unipi.booknetapi.model.genre.GenreEmbed;
-import it.unipi.booknetapi.model.stat.ReadEvent;
 import it.unipi.booknetapi.model.stat.UserMonthlyStat;
 import it.unipi.booknetapi.model.stat.UserYearlyStat;
 import it.unipi.booknetapi.model.user.*;
 import it.unipi.booknetapi.repository.author.AuthorRepository;
-import it.unipi.booknetapi.repository.book.BookRepository;
+// import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.genre.GenreRepository;
 import it.unipi.booknetapi.repository.stat.UserMonthlyStatRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
 import it.unipi.booknetapi.shared.model.PageResult;
-import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 @Service
 public class UserService {
 
     private final AuthorRepository authorRepository;
-    private final BookRepository bookRepository;
+    // private final BookRepository bookRepository;
     private final GenreRepository genreRepository;
     private final UserMonthlyStatRepository userMonthlyStatRepository;
     private final UserRepository userRepository;
@@ -45,16 +37,32 @@ public class UserService {
 
     public UserService(
             AuthorRepository authorRepository,
-            BookRepository bookRepository,
+            // BookRepository bookRepository,
             GenreRepository genreRepository,
             UserMonthlyStatRepository userMonthlyStatRepository,
             UserRepository userRepository
     ) {
         this.authorRepository = authorRepository;
-        this.bookRepository = bookRepository;
+        // this.bookRepository = bookRepository;
         this.genreRepository = genreRepository;
         this.userMonthlyStatRepository = userMonthlyStatRepository;
         this.userRepository = userRepository;
+    }
+
+
+    public void migrate() {
+        migrateReaders();
+        migrateReviewers();
+    }
+
+    public void migrateReaders() {
+        Thread thread = new Thread(this.userRepository::migrateReaders);
+        thread.start();
+    }
+
+    public void migrateReviewers() {
+        Thread thread = new Thread(this.userRepository::migrateReviewers);
+        thread.start();
     }
 
 
@@ -150,20 +158,7 @@ public class UserService {
         );
     }
 
-    public void migrate() {
-        migrateReaders();
-        migrateReviewers();
-    }
 
-    public void migrateReaders() {
-        Thread thread = new Thread(this.userRepository::migrateReaders);
-        thread.start();
-    }
-
-    public void migrateReviewers() {
-        Thread thread = new Thread(this.userRepository::migrateReviewers);
-        thread.start();
-    }
 
 
 

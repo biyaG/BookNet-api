@@ -52,6 +52,12 @@ public class BookService {
     }
 
 
+    public void migrate() {
+        Thread thread = new Thread(this.bookRepository::migrate);
+        thread.start();
+    }
+
+
     public BookResponse saveBook(BookCreateCommand command){
         if(command.getTitle() == null || command.getTitle().isBlank()) return null;
 

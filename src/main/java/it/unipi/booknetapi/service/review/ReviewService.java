@@ -42,6 +42,13 @@ public class ReviewService {
     }
 
 
+    public void migrate() {
+        Thread thread = new Thread(this.reviewRepository::migrate);
+        thread.start();
+    }
+
+
+
     private void logBookActivity(Book book, ActivityType type, int ratingValue) {
         this.analyticsRepository.recordActivity(
                 book.getId(), book.getTitle(),

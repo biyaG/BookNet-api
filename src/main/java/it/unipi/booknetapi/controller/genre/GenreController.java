@@ -90,6 +90,21 @@ public class GenreController {
     }
 
 
+    @GetMapping("/migrate")
+    @Operation(summary = "Migrate genre from mongodb to neo4j (Admin only)", description = "Migrates all genres from mongodb to neo4j.")
+    public ResponseEntity<String> migrateGenres(@RequestHeader("Authorization") String token) {
+        UserToken userToken = authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        this.genreService.migrate();
+
+        return ResponseEntity.ok("Starting migration");
+    }
+
+
     @GetMapping("/{idGenre}")
     @Operation(summary = "Get genre information")
     @SecurityRequirements(value = {})

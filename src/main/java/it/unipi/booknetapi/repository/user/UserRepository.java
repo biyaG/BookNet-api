@@ -1326,4 +1326,31 @@ public class UserRepository implements UserRepositoryInterface {
         });
     }
 
+
+    /**
+     *
+     */
+    @Override
+    public void migrate() {
+        logger.debug("[REPOSITORY] [USER] [MIGRATE] [BEGIN]");
+
+        long total = this.userCollection
+                .countDocuments();
+
+        int totalPages = (int) Math.ceil((double) total / this.batchSize);
+
+        for(int page = 0; page < totalPages; page++) {
+            int skip = page * this.batchSize;
+            List<User> users = this.userCollection
+                    .find()
+                    .skip(skip)
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>())
+                    .stream().filter(u -> u.getRole() != null && u.getRole() != Role.Admin)
+                    .toList();
+
+            saveReadersToNeo4j(users);
+        }
+    }
+
 }
