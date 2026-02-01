@@ -226,6 +226,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newName);
 
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [NAME] user id: {}", idUser);
+
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
@@ -254,6 +256,8 @@ public class UserRepository implements UserRepositoryInterface {
     private void updateReaderNameInNeo4j(String idUser, String newName) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newName);
+
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [NAME] [NEO4J] user id: {}", idUser);
 
         this.registry.timer("neo4j.ops", "query", "update_reader").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
@@ -300,6 +304,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newPassword);
 
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [PASSWORD] user id: {}", idUser);
+
         UpdateResult updateResult = this.userCollection
                 .updateOne(
                         Filters.eq("_id", new ObjectId(idUser)),
@@ -319,6 +325,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(newImageUrl);
 
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [IMAGE] user id: {}", idUser);
+
         UpdateResult updateResult = this.userCollection
                 .updateOne(
                         Filters.eq("_id", new ObjectId(idUser)),
@@ -337,6 +345,8 @@ public class UserRepository implements UserRepositoryInterface {
     public boolean updatePreference(String idUser, ReaderPreference preference) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(preference);
+
+        logger.debug("[REPOSITORY] [READER] [UPDATE PREFERENCE] user id: {}", idUser);
 
         UpdateResult updateResult = this.userCollection
                 .updateOne(
@@ -361,6 +371,8 @@ public class UserRepository implements UserRepositoryInterface {
     private void updateNeo4jPreference(String idUser, ReaderPreference preference) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(preference);
+
+        logger.debug("[REPOSITORY] [READER] [UPDATE PREFERENCE] [NEO4J] user id: {}", idUser);
 
         List<Map<String, Object>> genreList = preference.getGenres() == null ? Collections.emptyList() :
                 preference.getGenres().stream()
@@ -437,6 +449,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         if(!ObjectId.isValid(idUser)) return List.of();
 
+        logger.debug("[REPOSITORY] [USER] [GET SHELF] user id: {}", idUser);
+
         ObjectId userId = new ObjectId(idUser);
 
         Reader reader = this.readerCollection.find(Filters.eq("_id", userId)).first();
@@ -455,6 +469,8 @@ public class UserRepository implements UserRepositoryInterface {
     public boolean updateShelf(String idUser, List<BookEmbed> books) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(books);
+
+        logger.debug("[REPOSITORY] [READER] [UPDATE] [SHELF] user id: {}", idUser);
 
         List<UserBookShelf> shelf = books.stream()
                 .filter(b -> b.getId() != null)
@@ -489,6 +505,8 @@ public class UserRepository implements UserRepositoryInterface {
     private void updateShelfNeo4j(String idUser, List<UserBookShelf> shelf) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(shelf);
+
+        logger.debug("[REPOSITORY] [READER] [UPDATE] [SHELF] user id: {}", idUser);
 
         List<Map<String, Object>> batch = shelf.stream()
                 .map(item -> {
@@ -548,6 +566,8 @@ public class UserRepository implements UserRepositoryInterface {
         if(!ObjectId.isValid(idUser)) return false;
         if(book.getId() == null) return false;
 
+        logger.debug("[REPOSITORY] [READER] [UPDATE] [ADD BOOK IN SHELF] user id: {}", idUser);
+
         UserBookShelf bookShelf = new UserBookShelf(book, BookShelfStatus.ADDED, new Date(), new Date());
 
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
@@ -578,6 +598,8 @@ public class UserRepository implements UserRepositoryInterface {
     private void addBookInShelfNeo4j(String idUser, BookEmbed book) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(book);
+
+        logger.debug("[REPOSITORY] [READER] [UPDATE] [ADD BOOK IN SHELF] user id: {}", idUser);
 
         this.registry.timer("neo4j.ops", "query", "add_to_shelf").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
@@ -630,6 +652,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idBook);
         if(!ObjectId.isValid(idUser) || !ObjectId.isValid(idBook)) return false;
 
+        logger.debug("[REPOSITORY] [READER] [UPDATE] [REMOVE BOOK FROM SHELF] user id: {}", idUser);
+
         UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idUser)),
                 Updates.pull("shelf", Filters.eq("id", new ObjectId(idBook)))
@@ -647,6 +671,8 @@ public class UserRepository implements UserRepositoryInterface {
     private void removeBookFromShelfNeo4j(String idUser, String idBook) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(idBook);
+
+        logger.debug("[REPOSITORY] [READER] [UPDATE] [REMOVE BOOK FROM SHELF] [NEO4J] user id: {}", idUser);
 
         this.registry.timer("neo4j.ops", "query", "remove_from_shelf").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
@@ -674,6 +700,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(book);
         if(!ObjectId.isValid(idUser)) return false;
 
+        logger.debug("[REPOSITORY] [READER] [UPDATE] [SHELF STATUS] user id: {}", idUser);
+
         ObjectId userId = new ObjectId(idUser);
 
         if(newStatus == null) newStatus = BookShelfStatus.ADDED;
@@ -698,6 +726,9 @@ public class UserRepository implements UserRepositoryInterface {
     }
 
     public void updateShelfStatusNeo4j(String userId, BookEmbed book, BookShelfStatus newStatus) {
+
+        logger.debug("[REPOSITORY] [READER] [UPDATE] [UPDATE SHELF STATUS] [NEO4J] user id: {}", userId);
+
         String query = """
             MERGE (r:Reader {mid: $userId})
             
@@ -741,6 +772,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(review.getUser());
         Objects.requireNonNull(review.getUser().getId());
 
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [ADD REVIEW] user id: {}", review.getUser().getId().toHexString());
+
         UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.eq("_id", review.getUser().getId()),
                 Updates.push("reviews", review.getId())
@@ -765,6 +798,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(rating);
         Objects.requireNonNull(date);
+
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [ADD REVIEW] [NEO4J] user id: {}", idUser);
 
         this.registry.timer("neo4j.ops", "query", "add_review").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
@@ -792,6 +827,8 @@ public class UserRepository implements UserRepositoryInterface {
 
         if(!ObjectId.isValid(idUser) || !ObjectId.isValid(idBook) || !ObjectId.isValid(idReview)) return false;
 
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [DELETE REVIEW] user id: {}", idUser);
+
         UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.and(
                     Filters.eq("_id", new ObjectId(idUser)),
@@ -812,6 +849,8 @@ public class UserRepository implements UserRepositoryInterface {
     private void deleteReviewInNeo4j(String idUser, String idBook) {
         Objects.requireNonNull(idBook);
         Objects.requireNonNull(idUser);
+
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [DELETE REVIEW] [NEO4J] user id: {}", idUser);
 
         this.registry.timer("neo4j.ops", "query", "delete_review").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
@@ -834,6 +873,8 @@ public class UserRepository implements UserRepositoryInterface {
     public boolean addNotification(String idUser, NotificationEmbed notification) {
         Objects.requireNonNull(idUser);
         Objects.requireNonNull(notification);
+
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [ADD NOTIFICATION] user id: {}", idUser);
 
         ObjectId oidUser = new ObjectId(idUser);
 
@@ -863,6 +904,9 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idNotification);
 
         if(!ObjectId.isValid(idUser) ||  !ObjectId.isValid(idNotification)) return false;
+
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [DELETE NOTIFICATION] user id: {}", idUser);
+
         ObjectId oidUser = new ObjectId(idUser);
         ObjectId oidNotification = new ObjectId(idNotification);
 
@@ -887,6 +931,8 @@ public class UserRepository implements UserRepositoryInterface {
         Objects.requireNonNull(idNotification);
 
         if (idNotification.isEmpty()) return false;
+
+        logger.debug("[REPOSITORY] [USER] [UPDATE] [DELETE MULTI NOFITICATION] user id: {}", idUser);
 
         try {
             ObjectId userObjectId = new ObjectId(idUser);
@@ -925,6 +971,8 @@ public class UserRepository implements UserRepositoryInterface {
 
         if(!ObjectId.isValid(idUser)) return false;
 
+        logger.debug("[REPOSITORY] [USER] [DELETE] user id: {}", idUser);
+
         try(ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
@@ -948,6 +996,8 @@ public class UserRepository implements UserRepositoryInterface {
 
     private void deleteUserFromNeo4j(String idUser) {
         Objects.requireNonNull(idUser);
+
+        logger.debug("[REPOSITORY] [USER] [DELETE] [NEO4J] user id: {}", idUser);
 
         this.registry.timer("neo4j.ops", "query", "delete_user").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
@@ -981,6 +1031,8 @@ public class UserRepository implements UserRepositoryInterface {
 
         if(ids.isEmpty()) return true;
 
+        logger.debug("[REPOSITORY] [USER] [DELETE MANY] user id: {}", ids.size());
+
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
             mongoSession.startTransaction();
 
@@ -1012,6 +1064,8 @@ public class UserRepository implements UserRepositoryInterface {
                 .filter(ObjectId::isValid)
                 .toList();
 
+        logger.debug("[REPOSITORY] [USER] [DELETE MANY] [NEO4J] user id: {}", ids.size());
+
         this.registry.timer("neo4j.ops", "query", "delete_user").record(() -> {
             try (Session session = this.neo4jManager.getDriver().session()) {
                 session.executeWrite(
@@ -1037,11 +1091,32 @@ public class UserRepository implements UserRepositoryInterface {
 
         if(!ObjectId.isValid(idUser)) return Optional.empty();
 
+        logger.debug("[REPOSITORY] [USER] [FIND] [BY ID] user id: {}", idUser);
+
         User user = this.userCollection
                 .find(Filters.eq("_id", new ObjectId(idUser)))
                 .first();
 
         return user != null ? Optional.of(user) : Optional.empty();
+    }
+
+    /**
+     * @param idUser user's id
+     * @return a reader associated with the given id or empty if not found
+     */
+    @Override
+    public Optional<Reader> findReaderById(String idUser) {
+        Objects.requireNonNull(idUser);
+
+        if(!ObjectId.isValid(idUser)) return Optional.empty();
+
+        logger.debug("[REPOSITORY] [READER] [FIND BY ID] user id: {}", idUser);
+
+        Reader user = this.readerCollection
+                .find(Filters.eq("_id", new ObjectId(idUser)))
+                .first();
+
+        return user != null && user.getRole() != null && user.getRole().equals(Role.Reader) ? Optional.of(user) : Optional.empty();
     }
 
     /**
@@ -1051,6 +1126,8 @@ public class UserRepository implements UserRepositoryInterface {
     @Override
     public Optional<InternalUser> findByUsername(String username) {
         Objects.requireNonNull(username);
+
+        logger.debug("[REPOSITORY] [USER] [FIND BY USERNAME] user id: {}", username);
 
         InternalUser user = this.internalUserCollection
                 .find(Filters.eq("username", username))
@@ -1064,6 +1141,8 @@ public class UserRepository implements UserRepositoryInterface {
      */
     @Override
     public PageResult<User> findAll(int page, int size) {
+        logger.debug("[REPOSITORY] [USER] [FIND MANY] page: {}, size: {}", page, size);
+
         int skip = page * size;
 
         List<User> users = this.userCollection
@@ -1083,6 +1162,8 @@ public class UserRepository implements UserRepositoryInterface {
      */
     @Override
     public PageResult<Admin> findAllAdmin(int page, int size) {
+        logger.debug("[REPOSITORY] [USER] [FIND MANY] [ADMIN] page: {}, size: {}", page, size);
+
         int skip = page * size;
 
         List<Admin> users = this.adminCollection
@@ -1102,6 +1183,9 @@ public class UserRepository implements UserRepositoryInterface {
      */
     @Override
     public PageResult<Reader> findAllReader(int page, int size) {
+        logger.debug("[REPOSITORY] [USER] [FIND MANY] [READER] page: {}, size: {}", page, size);
+
+
         int skip = page * size;
 
         List<Reader> users = this.readerCollection
@@ -1121,6 +1205,9 @@ public class UserRepository implements UserRepositoryInterface {
      */
     @Override
     public PageResult<Reviewer> findAllReviewer(int page, int size) {
+        logger.debug("[REPOSITORY] [USER] [FIND MANY] [REVIEWER] page: {}, size: {}", page, size);
+
+
         int skip = page * size;
 
         List<Reviewer> users = this.reviewerCollection
@@ -1201,6 +1288,8 @@ public class UserRepository implements UserRepositoryInterface {
 
     private void importReadersWithRelationships(List<Reader> readers) {
         if (readers == null || readers.isEmpty()) return;
+
+        logger.debug("[REPOSITORY] [READER] [IMPORT READER] [WITH RELATIONSHIPS] reader size: {}", readers.size());
 
         // 1. Transform Java POJOs to Map for Neo4j
         List<Map<String, Object>> batch = readers.stream()

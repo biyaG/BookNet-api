@@ -38,6 +38,7 @@ public interface UserRepositoryInterface {
     boolean deleteAll(List<String> idUsers);
 
     Optional<User> findById(String idUser);
+    Optional<Reader> findReaderById(String idUser);
 
     Optional<InternalUser> findByUsername(String username);
 

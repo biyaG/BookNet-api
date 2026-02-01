@@ -118,12 +118,12 @@ public class UserService {
         boolean updated = this.userRepository.updatePreference(command.getUserToken().getIdUser(), readerPreference);
         if(!updated) return null;
 
-        User user =  this.userRepository.findById(command.getUserToken().getIdUser())
+        Reader user =  this.userRepository.findReaderById(command.getUserToken().getIdUser())
                 .orElse(null);
 
         if(user == null || user.getRole() != Role.Reader) return null;
 
-        return new ReaderPreferenceResponse(((Reader) user).getPreference());
+        return new ReaderPreferenceResponse(user.getPreference());
     }
 
 
