@@ -528,10 +528,11 @@ public class BookRepository implements BookRepositoryInterface {
 
         List<Map<String, Object>> neo4jBatch = books.stream()
                 .map(book -> {
+                    Float ratingAvg = book.getRatingReview() != null ? book.getRatingReview().getRating() : 0.0f;
                     Map<String, Object> map = new HashMap<>();
                     map.put("bookId", book.getId().toHexString());
                     map.put("title", book.getTitle());
-                    map.put("ratingAvg", book.getRatingReview());
+                    map.put("ratingAvg", ratingAvg);
 
                     List<Map<String, String>> authorsData = new ArrayList<>();
                     if (book.getAuthors() != null) {
