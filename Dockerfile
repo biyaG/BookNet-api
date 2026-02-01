@@ -17,8 +17,8 @@ COPY --from=build /app/target/*.jar app.jar
 
 # Copy the RSA keys (Ensure these exist in your project root or adjust path)
 # If you want to mount them as volumes instead (more secure), remove these COPY lines.
-COPY keys/private_key_pkcs8.pem /app/keys/private_key_pkcs8.pem
-COPY keys/public_key.pem /app/keys/public_key.pem
+COPY src/main/resources/keys/private_key_pkcs8.pem /app/keys/private_key_pkcs8.pem
+COPY src/main/resources/keys/public_key.pem /app/keys/public_key.pem
 
 EXPOSE 8080
 
