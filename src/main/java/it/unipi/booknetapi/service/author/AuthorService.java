@@ -38,7 +38,7 @@ public class AuthorService {
     }
 
     public void migrate() {
-        Thread thread = new Thread(this.authorRepository::migrateAuthors);
+        Thread thread = new Thread(this.authorRepository::migrate);
         thread.start();
     }
 

@@ -656,7 +656,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     /**
      * Migrate authors from mongodb to neo4j
      */
-    @Override
+    /*@Override
     public void migrateAuthors() {
         logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J]");
 
@@ -709,7 +709,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
         }
 
         logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J] Migration complete.");
-    }
+    }*/
 
     private List<AuthorStats> handleFindFromNeo4J(String query, int limit) {
         try (Session session = this.neo4jManager.getDriver().session()) {
@@ -797,7 +797,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
     public void migrate() {
         logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE]");
 
-        long total = this.mongoCollection
+        /*long total = this.mongoCollection
                 .countDocuments();
 
         int totalPages = (int) Math.ceil((double) total / this.batchSize);
@@ -811,7 +811,30 @@ public class AuthorRepository implements AuthorRepositoryInterface {
                     .into(new ArrayList<>());
 
             bulkUpdateAuthorsInNeo4j(authors);
+        }*/
+
+
+        int offset = 0;
+
+        ObjectId lastId = new ObjectId("000000000000000000000000");
+
+        while (true) {
+            logger.debug("[REPOSITORY] [AUTHOR] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
+
+            List<Author> authors = this.mongoCollection
+                    .find(Filters.gt("_id", lastId))
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            if(authors.isEmpty()) break;
+
+            lastId = authors.getLast().getId();
+
+            bulkUpdateAuthorsInNeo4j(authors);
+
+            offset += this.batchSize;
         }
+
     }
 
 }

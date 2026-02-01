@@ -2,10 +2,7 @@ package it.unipi.booknetapi.repository.book;
 
 
 import com.mongodb.bulk.BulkWriteResult;
-import com.mongodb.client.ClientSession;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.*;
 import com.mongodb.client.model.*;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
@@ -1455,7 +1452,7 @@ public class BookRepository implements BookRepositoryInterface {
     public void migrate() {
         logger.debug("[REPOSITORY] [BOOK] [MIGRATE]");
 
-        long total = this.mongoCollection
+        /*long total = this.mongoCollection
                 .countDocuments();
 
         int totalPages = (int) Math.ceil((double) total / this.batchSize);
@@ -1469,6 +1466,32 @@ public class BookRepository implements BookRepositoryInterface {
                     .into(new ArrayList<>());
 
             importBooksWithRelationships(books);
+        }*/
+
+        int offset = 0;
+
+        // Start with a "zero" ObjectId (minimum value)
+        ObjectId lastId = new ObjectId("000000000000000000000000");
+
+        while (true) {
+            logger.debug("[REPOSITORY] [BOOK] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
+
+            // Find the next batch of books where _id > lastId
+            List<Book> books = this.mongoCollection
+                    .find(Filters.gt("_id", lastId)) // Use Index instead of Scan
+                    .sort(Sorts.ascending("_id"))    // Ensure order
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            if (books.isEmpty()) break; // Finished
+
+            // Update the cursor to the last processed ID
+            lastId = books.getLast().getId();
+
+            // Process migration
+            importBooksWithRelationships(books);
+
+            offset += this.batchSize;
         }
     }
 

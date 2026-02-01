@@ -763,9 +763,9 @@ public class ReviewRepository implements ReviewRepositoryInterface {
      */
     @Override
     public void migrate() {
-        logger.debug("[REPOSITORY] [REVIEW] [MIGRATE] [BEGIN]");
+        logger.debug("[REPOSITORY] [REVIEW] [MIGRATE]");
 
-        long total = this.mongoCollection
+        /*long total = this.mongoCollection
                 .countDocuments();
 
         int totalPages = (int) Math.ceil((double) total / this.batchSize);
@@ -779,8 +779,34 @@ public class ReviewRepository implements ReviewRepositoryInterface {
                     .into(new ArrayList<>());
 
             saveReviewToNeo4j(reviews);
+        }*/
+
+
+        int offset = 0;
+
+        // Start with a "zero" ObjectId (minimum value)
+        ObjectId lastId = new ObjectId("000000000000000000000000");
+
+        while (true) {
+            logger.debug("[REPOSITORY] [REVIEW] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
+
+            // Find the next batch of books where _id > lastId
+            List<Review> reviews = this.mongoCollection
+                    .find(Filters.gt("_id", lastId)) // Use Index instead of Scan
+                    .sort(Sorts.ascending("_id"))    // Ensure order
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>());
+
+            if (reviews.isEmpty()) break; // Finished
+
+            // Update the cursor to the last processed ID
+            lastId = reviews.getLast().getId();
+
+            // Process migration
+            saveReviewToNeo4j(reviews);
+
+            offset += this.batchSize;
         }
 
-        logger.debug("[REPOSITORY] [REVIEW] [MIGRATE] [BEGIN] [END]");
     }
 }

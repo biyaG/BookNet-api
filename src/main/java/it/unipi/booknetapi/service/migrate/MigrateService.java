@@ -5,14 +5,10 @@ import it.unipi.booknetapi.repository.book.BookRepository;
 import it.unipi.booknetapi.repository.genre.GenreRepository;
 import it.unipi.booknetapi.repository.review.ReviewRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class MigrateService {
-
-    Logger logger = LoggerFactory.getLogger(MigrateService.class);
 
     private final AuthorRepository authorRepository;
     private final BookRepository bookRepository;
@@ -44,9 +40,7 @@ public class MigrateService {
 
         migrateReaders();
 
-        try {
-
-        } catch (Exception ignored) {}
+        migrateReviewers();
     }
 
     private void migrateGenres() {
@@ -70,6 +64,12 @@ public class MigrateService {
     private void migrateReaders() {
         try {
             this.userRepository.migrateReaders();
+        } catch (Exception ignored) {}
+    }
+
+    private void migrateReviewers() {
+        try {
+            this.reviewRepository.migrate();
         } catch (Exception ignored) {}
     }
 

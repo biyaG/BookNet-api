@@ -40,7 +40,7 @@ public interface AuthorRepositoryInterface {
 
     List<Author> findByExternGoodReadIds(List<String> idAuthors);
 
-    void migrateAuthors();
+    // void migrateAuthors();
 
     List<AuthorStats> findMostWrittenBooksAuthors(int limit);
     List<AuthorStats> findMostFollowedAuthors(int limit);

@@ -1159,7 +1159,7 @@ public class UserRepository implements UserRepositoryInterface {
     public void migrateReaders() {
         logger.debug("[REPOSITORY] [USER] [MIGRATE READERS]");
 
-        long total = this.userCollection
+        /*long total = this.userCollection
                 .countDocuments(Filters.eq("role", Role.Reader.name()));
 
         int totalPages = (int) Math.ceil((double) total / this.batchSize);
@@ -1173,6 +1173,29 @@ public class UserRepository implements UserRepositoryInterface {
                     .into(new ArrayList<>());
 
             importReadersWithRelationships(readers);
+        }*/
+
+
+        int offset = 0;
+
+        ObjectId lastId = new ObjectId("000000000000000000000000");
+
+        while(true) {
+            logger.debug("[REPOSITORY] [READER] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
+
+            List<Reader> readers = this.readerCollection
+                    .find(Filters.gt("_id", lastId))
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>()).stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
+                    .toList();
+
+            if(readers.isEmpty()) break;
+
+            lastId = readers.getLast().getId();
+
+            importReadersWithRelationships(readers);
+
+            offset += this.batchSize;
         }
     }
 
@@ -1280,7 +1303,7 @@ public class UserRepository implements UserRepositoryInterface {
     public void migrateReviewers() {
         logger.debug("[REPOSITORY] [USER] [MIGRATE] Reviewers");
 
-        long total = this.userCollection
+        /*long total = this.userCollection
                 .countDocuments(Filters.eq("role", Role.Reader.name()));
 
         int totalPages = (int) Math.ceil((double) total / this.batchSize);
@@ -1294,7 +1317,30 @@ public class UserRepository implements UserRepositoryInterface {
                     .into(new ArrayList<>());
 
             bulkUpsertUsers(reviewers);
+        }*/
+
+        int offset = 0;
+
+        ObjectId lastId = new ObjectId("000000000000000000000000");
+
+        while(true) {
+            logger.debug("[REPOSITORY] [REVIEWER] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
+
+            List<Reviewer> reviewers = this.reviewerCollection
+                    .find(Filters.gt("_id", lastId))
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>()).stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
+                    .toList();
+
+            if(reviewers.isEmpty()) break;
+
+            lastId = reviewers.getLast().getId();
+
+            bulkUpsertUsers(reviewers);
+
+            offset += this.batchSize;
         }
+
     }
 
     private <T extends User> void bulkUpsertUsers(List<T> users) {
@@ -1334,7 +1380,7 @@ public class UserRepository implements UserRepositoryInterface {
     public void migrate() {
         logger.debug("[REPOSITORY] [USER] [MIGRATE] [BEGIN]");
 
-        long total = this.userCollection
+        /*long total = this.userCollection
                 .countDocuments();
 
         int totalPages = (int) Math.ceil((double) total / this.batchSize);
@@ -1350,6 +1396,29 @@ public class UserRepository implements UserRepositoryInterface {
                     .toList();
 
             saveReadersToNeo4j(users);
+        }*/
+
+
+        int offset = 0;
+
+        ObjectId lastId = new ObjectId("000000000000000000000000");
+
+        while(true) {
+            logger.debug("[REPOSITORY] [USER] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
+
+            List<User> users = this.userCollection
+                    .find(Filters.gt("_id", lastId))
+                    .limit(this.batchSize)
+                    .into(new ArrayList<>()).stream().filter(u -> u.getRole() != null && u.getRole() != Role.Admin)
+                    .toList();
+
+            if(users.isEmpty()) break;
+
+            lastId = users.getLast().getId();
+
+            saveReadersToNeo4j(users);
+
+            offset += this.batchSize;
         }
     }
 
