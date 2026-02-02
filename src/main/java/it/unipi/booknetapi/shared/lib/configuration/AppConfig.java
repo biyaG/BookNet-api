@@ -32,13 +32,13 @@ public class AppConfig {
     private Boolean neo4jEncrypted;
     private String neo4jDatabase;
 
-    private String redisUri;
-    private String redisHost;
-    private Integer redisPort;
-    private String redisPassword;
-    private Integer redisTimeout;
-    private Long redisDefaultExpiration;
-    private String redisAppSpaceName;
+//    private String redisUri;
+//    private String redisHost;
+//    private Integer redisPort;
+//    private String redisPassword;
+//    private Integer redisTimeout;
+//    private Long redisDefaultExpiration;
+//    private String redisAppSpaceName;
 
     private Integer batchSize;
 

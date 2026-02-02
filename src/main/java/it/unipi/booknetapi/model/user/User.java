@@ -1,5 +1,6 @@
 package it.unipi.booknetapi.model.user;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
@@ -20,6 +21,7 @@ public class User {
     private String name;
     private String imageUrl;
 
+    @NotBlank(message = "Role can not be blank")
     private Role role;
 
     public UserEmbed toEmbed() {
