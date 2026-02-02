@@ -7,6 +7,7 @@ public enum ImportEntityType {
     BOOK_GENRE,
     BOOK_SIMILARITY,
     REVIEW,
+    ADD_TO_SHELF,
 
     ;
 

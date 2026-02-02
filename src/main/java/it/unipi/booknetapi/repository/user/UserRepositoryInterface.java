@@ -21,6 +21,8 @@ public interface UserRepositoryInterface {
     boolean updateImage(String idUser, String newImageUrl);
     boolean updatePreference(String idUser, ReaderPreference preference);
 
+    int importGoodReadsReviewsRead(List<ReviewerRead> reads);
+
     List<UserBookShelf> getShelf(String idUser);
     boolean updateShelf(String idUser, List<BookEmbed> shelf);
     boolean addBookInShelf(String idUser, BookEmbed book);

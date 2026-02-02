@@ -1,12 +1,11 @@
 package it.unipi.booknetapi.repository.user;
 
+import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.PushOptions;
-import com.mongodb.client.model.Updates;
+import com.mongodb.client.model.*;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
@@ -433,6 +432,113 @@ public class UserRepository implements UserRepositoryInterface {
                                 "authors", authorList
                             )
                     );
+                    return null;
+                });
+            }
+        });
+    }
+
+
+    /**
+     * @param reads
+     */
+    @Override
+    public int importGoodReadsReviewsRead(List<ReviewerRead> reads) {
+        if (reads == null || reads.isEmpty()) return 0;
+
+        logger.debug("[REPOSITORY] [REVIEWER] [INSERT RELATIONSHIPS] [FROM GOODREADS] Inserting reads: {}", reads.size());
+
+        int count = 0;
+        for (int i=0; i<reads.size(); i+=this.batchSize) {
+            int endIndex = Math.min(i + batchSize, reads.size());
+
+            List<ReviewerRead> batch = reads.subList(i, endIndex);
+
+            count += importGoodReadsReviewsReadMongoDB(batch);
+
+            importGoodReadsReviewsReadNeo4J(batch);
+        }
+
+        return count;
+    }
+
+    private int importGoodReadsReviewsReadMongoDB(List<ReviewerRead> reads) {
+        if (reads == null || reads.isEmpty()) return 0;
+
+        logger.debug("[REPOSITORY] [REVIEWER] [INSERT RELATIONSHIPS] [FROM GOODREADS] [MONGODB] Inserting reads: {}", reads.size());
+
+        List<WriteModel<Reviewer>> writes = new ArrayList<>();
+
+        for(ReviewerRead read : reads) {
+            if(read.getUserId() != null) {
+                UserBookShelf bookShelf = new UserBookShelf(read);
+
+                writes.add(new UpdateOneModel<>(
+                        Filters.eq("_id", read.getUserId()),
+
+                        Updates.combine(
+                                Updates.push("shelf", bookShelf)
+                        ),
+
+                        new UpdateOptions().upsert(false)
+                ));
+            }
+        }
+
+        if(!writes.isEmpty()) {
+            BulkWriteResult result = this.reviewerCollection
+                    .bulkWrite(writes, new BulkWriteOptions().ordered(false));
+
+            return result.getModifiedCount();
+        }
+
+        return 0;
+    }
+
+    private void importGoodReadsReviewsReadNeo4J(List<ReviewerRead> reads) {
+        if (reads == null || reads.isEmpty()) return;
+
+        logger.debug("[REPOSITORY] [REVIEWER] [INSERT RELATIONSHIPS] [FROM GOODREADS] [NEo4J] Inserting reads: {}", reads.size());
+
+        List<Map<String, Object>> batch = reads.stream()
+                .filter(r -> r.getUserId() != null && r.getBook() != null && r.getBook().getId() != null)
+                .map(r -> {
+                    // Logic: isRead null/false -> READING, true -> FINISHED
+                    boolean isFinished = Boolean.TRUE.equals(r.getIsRead());
+                    String status = isFinished ? BookShelfStatus.FINISHED.name() : BookShelfStatus.READING.name();
+
+                    // Logic: Use readAt if finished, otherwise startedAt. Fallback to now.
+                    Date date = isFinished ? r.getReadAt() : r.getStartedAt();
+                    long ts = (date != null) ? date.getTime() : System.currentTimeMillis();
+
+                    return Map.<String, Object>of(
+                            "uid", r.getUserId().toHexString(),
+                            "bid", r.getBook().getId().toHexString(),
+                            "status", status,
+                            "ts", ts
+                    );
+                })
+                .toList();
+
+        String cypher = """
+            UNWIND $batch AS row
+            
+            // Ensure Nodes Exist (Shell Node Pattern)
+            MERGE (r:Reader {mid: row.uid})
+            MERGE (b:Book {mid: row.bid})
+            
+            // Create/Update Relationship
+            MERGE (r)-[rel:ADDED_TO_SHELF]->(b)
+            SET
+                rel.status = row.status,
+                rel.ts = row.ts
+            """;
+
+
+        this.registry.timer("neo4j.ops", "query", "import_reads").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(cypher, Values.parameters("batch", batch));
                     return null;
                 });
             }

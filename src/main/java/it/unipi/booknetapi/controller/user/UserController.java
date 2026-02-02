@@ -1,12 +1,14 @@
 package it.unipi.booknetapi.controller.user;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import it.unipi.booknetapi.command.fetch.ImportDataCommand;
 import it.unipi.booknetapi.command.review.ReviewByReaderListCommand;
 import it.unipi.booknetapi.command.stat.UserMonthlyStatGetCommand;
 import it.unipi.booknetapi.command.stat.UserMonthlyStatListCommand;
@@ -18,14 +20,20 @@ import it.unipi.booknetapi.dto.stat.UserYearlyStatResponse;
 import it.unipi.booknetapi.dto.user.*;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.service.auth.AuthService;
+import it.unipi.booknetapi.service.fetch.ImportEntityType;
+import it.unipi.booknetapi.service.fetch.ImportService;
 import it.unipi.booknetapi.service.review.ReviewService;
+import it.unipi.booknetapi.service.source.SourceService;
 import it.unipi.booknetapi.service.user.UserService;
 import it.unipi.booknetapi.shared.lib.authentication.UserToken;
 import it.unipi.booknetapi.shared.model.PageResult;
 import it.unipi.booknetapi.shared.model.PaginationRequest;
+import it.unipi.booknetapi.shared.model.Source;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -35,18 +43,62 @@ import java.util.List;
 public class UserController {
 
     private final AuthService authService;
+    private final ImportService importService;
     private final ReviewService reviewService;
+    private final SourceService sourceService;
     private final UserService userService;
 
     public UserController(
             AuthService authService,
+            ImportService importService,
             ReviewService reviewService,
+            SourceService sourceService,
             UserService userService
     ) {
         this.authService = authService;
+        this.importService = importService;
         this.reviewService = reviewService;
+        this.sourceService = sourceService;
         this.userService = userService;
     }
+
+
+
+    @PostMapping(value = "reviewer/reads/upload/{idSource}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Import reviewers reads (Admin only)", description = "Uploads a file containing reviewers interaction in NDJSON format.")
+    public ResponseEntity<String> importAuthorsFromGoodreads(
+            @PathVariable String idSource,
+            @RequestHeader("Authorization") String token,
+            @Parameter(
+                    description = "The NDJSON file to upload",
+                    content = @Content(mediaType = MediaType.MULTIPART_FORM_DATA_VALUE)
+            )
+            @RequestParam("file") MultipartFile file
+    ) {
+        UserToken userToken = this.authService.getUserToken(token);
+
+        if(userToken == null || userToken.getRole() != Role.Admin) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("File is empty");
+        }
+
+        Source source = this.sourceService.getEnumSource(idSource);
+
+        if(source == null) return ResponseEntity.badRequest().body("Invalid source");
+
+        ImportDataCommand command = ImportDataCommand.builder()
+                .source(source)
+                .importEntityType(ImportEntityType.ADD_TO_SHELF)
+                .file(file)
+                .userToken(userToken)
+                .build();
+
+        return ResponseEntity.ok(this.importService.importData(command));
+    }
+
 
 
     @GetMapping("/migrate")

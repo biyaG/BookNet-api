@@ -188,6 +188,25 @@ public class ImportService {
                         return "Successfully processed import reviews";
                     }
 
+                    case ADD_TO_SHELF -> {
+                        List<InteractionGoodReads> interactionGoodReads =  extractDataFromFile(command.getSource(), command.getFile(), InteractionGoodReads.class);
+                        if(interactionGoodReads == null) return "Error during read file";
+
+                        ParameterFetch<InteractionGoodReads> parameterFetch = ParameterFetch.<InteractionGoodReads>builder()
+                                .idUser(command.getUserToken().getIdUser())
+                                .source(command.getSource())
+                                .entityType(EntityType.SHELF)
+                                .fileUrl(fileUrl)
+                                .fileName(fileName)
+                                .fileContentType(fileContentType)
+                                .data(interactionGoodReads)
+                                .build();
+
+                        processSaveImport(parameterFetch, this::importGoodReadsAddToShelf);
+
+                        return "Successfully processed import add to shelf";
+                    }
+
                     default -> {
                         return "Unknown entity type";
                     }
@@ -703,7 +722,7 @@ public class ImportService {
 
                 ReviewerRead read = ReviewerRead.builder()
                         .userId(mapExternIdUser.get(interactionGoodReads.getUserId()).getId())
-                        .bookId(mapExternIdBook.get(interactionGoodReads.getBookId()).getId())
+                        .book(new BookEmbed(mapExternIdBook.get(interactionGoodReads.getBookId())))
                         .isRead(interactionGoodReads.getIsRead())
                         .readAt(interactionGoodReads.getReadAt())
                         .startedAt(interactionGoodReads.getStartedAt())
@@ -715,7 +734,7 @@ public class ImportService {
 
         List<Review> reviewsSaved = this.reviewRepository.insertFromGoodReads(reviews);
 
-        this.reviewRepository.importGoodReadsReviewsRead(reviewersRead);
+        this.userRepository.importGoodReadsReviewsRead(reviewersRead);
 
         logFetch(
                 parameterFetch,
@@ -729,6 +748,57 @@ public class ImportService {
         logger.debug("[SERVICE] [IMPORT] [GOOD READS] [REVIEWS] Importing GoodReads reviews completed.");
     }
 
+
+    private void importGoodReadsAddToShelf(ParameterFetch<InteractionGoodReads> parameterFetch){
+
+        List<InteractionGoodReads> goodReadsInteractions = parameterFetch.getData()
+                .stream()
+                .filter(i -> i.getIsRead() != null && i.getIsRead())
+                .toList();
+
+        List<String> externBookIds = goodReadsInteractions.stream().map(InteractionGoodReads::getBookId).toList();
+        List<String> externUserIds = goodReadsInteractions.stream().map(InteractionGoodReads::getUserId).toList();
+
+        List<Book> books = this.bookRepository.findByGoodReadsExternIds(externBookIds);
+
+        Map<String, Book> mapExternIdBook = books.stream()
+                .filter(b -> b.getExternalId() != null && b.getExternalId().getGoodReads() != null)
+                .collect(Collectors.toMap(
+                        b -> b.getExternalId().getGoodReads(),
+                        b -> b,
+                        (existing, replacement) -> existing
+                ));
+
+        Map<String, Reviewer> mapExternIdUser = findOrGenerateReviewers(externUserIds);
+
+        List<ReviewerRead> reviewersRead = new ArrayList<>(goodReadsInteractions.size());
+        for(InteractionGoodReads interactionGoodReads : goodReadsInteractions) {
+            if(mapExternIdBook.containsKey(interactionGoodReads.getBookId()) && mapExternIdUser.containsKey(interactionGoodReads.getUserId())) {
+                ReviewerRead read = ReviewerRead.builder()
+                        .userId(mapExternIdUser.get(interactionGoodReads.getUserId()).getId())
+                        .book(new BookEmbed(mapExternIdBook.get(interactionGoodReads.getBookId())))
+                        .isRead(interactionGoodReads.getIsRead())
+                        .readAt(interactionGoodReads.getReadAt())
+                        .startedAt(interactionGoodReads.getStartedAt())
+                        .build();
+
+                reviewersRead.add(read);
+            }
+        }
+
+        int userUpdated = this.userRepository.importGoodReadsReviewsRead(reviewersRead);
+
+        logFetch(
+                parameterFetch,
+                (long) reviewersRead.size(),
+                (long) userUpdated,
+                new ArrayList<>(),
+                true,
+                "Successfully processed " + userUpdated + " reads."
+        );
+
+        logger.debug("[SERVICE] [IMPORT] [GOOD READS] [REVIEWS] Importing GoodReads reviews completed.");
+    }
 
 
 

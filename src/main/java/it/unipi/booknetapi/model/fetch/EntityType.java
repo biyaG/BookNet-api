@@ -16,6 +16,7 @@ public enum EntityType {
     , NOTIFICATION("NOTIFICATION")
     , REVIEW("REVIEW")
     , USER("USER")
+    , SHELF("SHELF")
 
     ;
 
