@@ -13,13 +13,13 @@ import lombok.NoArgsConstructor;
 @EqualsAndHashCode(callSuper = true)
 public class BookRecommendationResponse extends BookEmbedResponse {
 
-    private Long score;
+    private Double score;
 
     public BookRecommendationResponse(BookEmbed book) {
         super(book);
     }
 
-    public BookRecommendationResponse(BookEmbed book, Long score) {
+    public BookRecommendationResponse(BookEmbed book, Double score) {
         super(book);
         this.score = score;
     }

@@ -10,6 +10,6 @@ public class BookStats {
 
     private String id;
     private String title;
-    private Long totalScore;
+    private Double totalScore;
 
 }

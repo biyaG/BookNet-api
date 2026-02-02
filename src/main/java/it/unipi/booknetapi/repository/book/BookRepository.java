@@ -1314,7 +1314,7 @@ public class BookRepository implements BookRepositoryInterface {
         return result.list(record -> BookStats.builder()
                 .id(record.get("id").asString())
                 .title(record.get("title").asString())
-                .totalScore(record.get("score").asLong())
+                .totalScore(record.get("score").asDouble())
                 .build()
         );
     }
@@ -1329,6 +1329,8 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     public List<BookStats> findRandomBooksNeo4j(int limit){
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [RANDOM] limit: {}", limit);
+
         String query = """
         MATCH (b:Book)
         RETURN
@@ -1361,6 +1363,8 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     private List<BookStats> findRandomBooksNeo4j(String idUser, int limit) {
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [RANDOM] user id: {}, limit: {}", idUser, limit);
+
         String query = """
         MATCH (me:Reader {mid: $idUser})
         MATCH (b:Book)
@@ -1401,6 +1405,8 @@ public class BookRepository implements BookRepositoryInterface {
     private List<BookStats> findPopularBooksByRatingNeo4J(int limit) {
         if(limit < 1) limit = 20;
 
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [POPULAR RATING] limit: {}", limit);
+
         String query = """
             MATCH (b:Book)<-[r:RATED]-(:Reader)
             
@@ -1440,6 +1446,8 @@ public class BookRepository implements BookRepositoryInterface {
 
     private List<BookStats> findPopularBooksByRatingNeo4J(Long dayAgo, int limit) {
         long thirtyDaysAgo = System.currentTimeMillis() - (dayAgo * 24 * 60 * 60 * 1000);
+
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [POPULAR RATING DAY AGO] day ago: {}, limit: {}", dayAgo, limit);
 
         String query = """
             MATCH (b:Book)<-[r:RATED]-(:Reader)
@@ -1486,6 +1494,8 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     private List<BookStats> findPopularBooksByShelfNeo4J(int limit) {
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [POPULAR SHELF] limit: {}", limit);
+
         String query = """
             MATCH (b:Book)<-[r:ADDED_TO_SHELF]-(:Reader)
             // Optional: Filter for specific status if needed
@@ -1521,55 +1531,78 @@ public class BookRepository implements BookRepositoryInterface {
     private List<BookStats> findCollaborativeRecommendationsBooksNeo4J(String idUser, int limit) {
         if (idUser == null || idUser.isBlank()) return Collections.emptyList();
 
+        logger.debug("[REPOSITORY] [BOOK] [FIND] [RECOMMENDATION] user id: {}, limit: {}", idUser, limit);
+
         String query = """
             MATCH (me:Reader {mid: $idUser})
             
-            MATCH (me)-[myRel]->(sharedNode)<-[peerRel]-(peer:Reader)
-            WHERE me <> peer
-            AND (
-                (TYPE(myRel) = 'RATED' AND TYPE(peerRel) = 'RATED' AND myRel.rating >= 4 AND peerRel.rating >= 4) OR
-                (
-                    TYPE(myRel) = 'ADDED_TO_SHELF' AND TYPE(peerRel) = 'ADDED_TO_SHELF'
-                    AND myRel.status IN ['READING', 'FINISHED'] AND peerRel.status IN ['READING', 'FINISHED']
-                ) OR
-                (TYPE(myRel) IN ['FOLLOWS', 'INTERESTED_IN'] AND TYPE(peerRel) IN ['FOLLOWS', 'INTERESTED_IN'])
-            )
-    
-            WITH me, peer,
-                 SUM(CASE
-                    WHEN TYPE(myRel) = 'RATED' THEN 5
-                    WHEN TYPE(myRel) = 'ADDED_TO_SHELF' THEN 3
-                    ELSE 1
-                 END) AS similarityScore
-            ORDER BY similarityScore DESC
-            LIMIT 50
-    
-            MATCH (peer)-[r:RATED|ADDED_TO_SHELF]->(rec:Book)
-            WHERE ((TYPE(r) = 'RATED' AND r.rating >= 4) OR (TYPE(r) = 'ADDED_TO_SHELF' AND r.status IN ['READING', 'FINISHED']))
-            AND NOT (me)-[:RATED|ADDED_TO_SHELF]->(rec)
-    
+            // Get books to exclude
+            OPTIONAL MATCH (me)-[r:ADDED_TO_SHELF|RATED]->(myBook:Book)
+            WITH me, collect(myBook) AS excludedBooks
+            
+            CALL {
+                // Strategy 1: Author recommendations
+                WITH me, excludedBooks
+                MATCH (me)-[:FOLLOWS]->(author:Author)
+                MATCH (author)<-[:WRITTEN_BY]-(book:Book)
+                WHERE NOT book IN excludedBooks
+                RETURN book, 5.0 AS priority, 'author' AS source
+            
+                UNION
+            
+                // Strategy 2: Genre recommendations
+                WITH me, excludedBooks
+                MATCH (me)-[:INTERESTED_IN]->(genre:Genre)
+                MATCH (genre)<-[:IN_GENRE]-(book:Book)
+                WHERE NOT book IN excludedBooks
+                RETURN book, 4.0 AS priority, 'genre' AS source
+            
+                UNION
+            
+                // Strategy 3: Similar books
+                WITH me, excludedBooks
+                MATCH (me)-[:ADDED_TO_SHELF|RATED]->(myBook:Book)
+                MATCH (myBook)-[:SIMILAR_TO]->(book:Book)
+                WHERE NOT book IN excludedBooks
+                RETURN book, 3.0 AS priority, 'similar' AS source
+            
+                UNION
+            
+                // Strategy 4: Popular books (fallback)
+                WITH excludedBooks
+                MATCH (r:Reader)-[interaction:RATED|ADDED_TO_SHELF]->(book:Book)
+                WHERE NOT book IN excludedBooks
+                  AND (
+                    (TYPE(interaction) = 'RATED' AND interaction.rating >= 4)
+                    OR (TYPE(interaction) = 'ADDED_TO_SHELF' AND interaction.status IN ['READING', 'FINISHED'])
+                  )
+                WITH book, count(DISTINCT r) AS popularity
+                ORDER BY popularity DESC
+                LIMIT 50
+                RETURN book, popularity * 0.1 AS priority, 'popular' AS source
+            }
+            
+            // Final results
+            WITH book, source, sum(priority) AS score
             RETURN
-                rec.mid AS id,
-                rec.title AS title,
-                SUM(similarityScore) AS score
+                book.mid AS id,
+                book.title AS title,
+                score,
+                source
             ORDER BY score DESC
             LIMIT $limit
             """;
 
-        this.registry.timer("neo4j.ops", "query", "collab_recommendations").record(() -> {
-            try (Session session = this.neo4jManager.getDriver().session()) {
-                return session.executeRead(tx -> {
-                    var result = tx.run(query, Values.parameters(
-                            "idUser", idUser,
-                            "limit", limit
-                    ));
+        try (Session session = this.neo4jManager.getDriver().session()) {
+            return session.executeRead(tx -> {
+                var result = tx.run(query, Values.parameters(
+                        "idUser", idUser,
+                        "limit", limit
+                ));
 
-                    return handleStatsResult(result);
-                });
-            }
-        });
-
-        return Collections.emptyList();
+                return handleStatsResult(result);
+            });
+        }
     }
 
 
