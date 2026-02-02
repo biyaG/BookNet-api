@@ -47,9 +47,6 @@ public class BookRepository implements BookRepositoryInterface {
     private final MeterRegistry registry;
     private final MongoClient mongoClient;
 
-    private static final String CACHE_PREFIX = "book:";
-    private static final int CACHE_TTL = 3600; // 1 hour
-
     public BookRepository(
             AppConfig appConfig,
             MongoClient mongoClient,
@@ -732,7 +729,7 @@ public class BookRepository implements BookRepositoryInterface {
                 UpdateResult result = this.mongoCollection
                         .updateOne(
                                 Filters.eq("_id", new ObjectId(idBook)),
-                                Updates.set("similar_books", books)
+                                Updates.set("similarBooks", books)
                         );
 
                 if (result.getModifiedCount() > 0) {
@@ -853,7 +850,7 @@ public class BookRepository implements BookRepositoryInterface {
                     if (ObjectId.isValid(bookId)) {
                         writes.add(new UpdateOneModel<>(
                                 Filters.eq("_id", new ObjectId(bookId)),
-                                Updates.set("similar_books", entry.getValue())
+                                Updates.set("similarBooks", entry.getValue())
                         ));
                     }
                 }

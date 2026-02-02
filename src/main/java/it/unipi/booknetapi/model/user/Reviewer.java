@@ -5,6 +5,9 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.bson.codecs.pojo.annotations.BsonDiscriminator;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Data
 @SuperBuilder
 @NoArgsConstructor
@@ -14,6 +17,7 @@ public class Reviewer extends User {
 
     private Role role = Role.Reviewer;
 
+    private List<UserBookShelf> shelf = new ArrayList<>();
     private ExternalId externalId;
 
 }

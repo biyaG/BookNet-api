@@ -377,7 +377,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
         // Prepare Batch: Calculate Status and Timestamp in Java
         List<Map<String, Object>> batch = reads.stream()
-                .filter(r -> r.getUserId() != null && r.getBookId() != null)
+                .filter(r -> r.getUserId() != null && r.getBook() != null)
                 .map(r -> {
                     // Logic: isRead null/false -> READING, true -> FINISHED
                     boolean isFinished = Boolean.TRUE.equals(r.getIsRead());
@@ -389,7 +389,7 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
                     return Map.<String, Object>of(
                             "uid", r.getUserId().toHexString(),
-                            "bid", r.getBookId().toHexString(),
+                            "bid", r.getBook().getId().toHexString(),
                             "status", status,
                             "ts", ts
                     );
@@ -727,13 +727,13 @@ public class ReviewRepository implements ReviewRepositoryInterface {
         int skip = page * size;
 
         List<Review> reviews = this.mongoCollection
-                .find(Filters.eq("user.id", new ObjectId(idReader)))
+                .find(Filters.eq("user._id", new ObjectId(idReader)))
                 .skip(skip)
                 .limit(size)
                 .into(new ArrayList<>());
 
         long total = this.mongoCollection
-                .countDocuments(Filters.eq("user.id", new ObjectId(idReader)));
+                .countDocuments(Filters.eq("user._id", new ObjectId(idReader)));
 
         return new PageResult<>(reviews, total, page, size);
     }

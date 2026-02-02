@@ -1,12 +1,11 @@
 package it.unipi.booknetapi.repository.user;
 
+import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.PushOptions;
-import com.mongodb.client.model.Updates;
+import com.mongodb.client.model.*;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
@@ -441,6 +440,113 @@ public class UserRepository implements UserRepositoryInterface {
 
 
     /**
+     * @param reads
+     */
+    @Override
+    public int importGoodReadsReviewsRead(List<ReviewerRead> reads) {
+        if (reads == null || reads.isEmpty()) return 0;
+
+        logger.debug("[REPOSITORY] [REVIEWER] [INSERT RELATIONSHIPS] [FROM GOODREADS] Inserting reads: {}", reads.size());
+
+        int count = 0;
+        for (int i=0; i<reads.size(); i+=this.batchSize) {
+            int endIndex = Math.min(i + batchSize, reads.size());
+
+            List<ReviewerRead> batch = reads.subList(i, endIndex);
+
+            count += importGoodReadsReviewsReadMongoDB(batch);
+
+            importGoodReadsReviewsReadNeo4J(batch);
+        }
+
+        return count;
+    }
+
+    private int importGoodReadsReviewsReadMongoDB(List<ReviewerRead> reads) {
+        if (reads == null || reads.isEmpty()) return 0;
+
+        logger.debug("[REPOSITORY] [REVIEWER] [INSERT RELATIONSHIPS] [FROM GOODREADS] [MONGODB] Inserting reads: {}", reads.size());
+
+        List<WriteModel<Reviewer>> writes = new ArrayList<>();
+
+        for(ReviewerRead read : reads) {
+            if(read.getUserId() != null) {
+                UserBookShelf bookShelf = new UserBookShelf(read);
+
+                writes.add(new UpdateOneModel<>(
+                        Filters.eq("_id", read.getUserId()),
+
+                        Updates.combine(
+                                Updates.push("shelf", bookShelf)
+                        ),
+
+                        new UpdateOptions().upsert(false)
+                ));
+            }
+        }
+
+        if(!writes.isEmpty()) {
+            BulkWriteResult result = this.reviewerCollection
+                    .bulkWrite(writes, new BulkWriteOptions().ordered(false));
+
+            return result.getModifiedCount();
+        }
+
+        return 0;
+    }
+
+    private void importGoodReadsReviewsReadNeo4J(List<ReviewerRead> reads) {
+        if (reads == null || reads.isEmpty()) return;
+
+        logger.debug("[REPOSITORY] [REVIEWER] [INSERT RELATIONSHIPS] [FROM GOODREADS] [NEo4J] Inserting reads: {}", reads.size());
+
+        List<Map<String, Object>> batch = reads.stream()
+                .filter(r -> r.getUserId() != null && r.getBook() != null && r.getBook().getId() != null)
+                .map(r -> {
+                    // Logic: isRead null/false -> READING, true -> FINISHED
+                    boolean isFinished = Boolean.TRUE.equals(r.getIsRead());
+                    String status = isFinished ? BookShelfStatus.FINISHED.name() : BookShelfStatus.READING.name();
+
+                    // Logic: Use readAt if finished, otherwise startedAt. Fallback to now.
+                    Date date = isFinished ? r.getReadAt() : r.getStartedAt();
+                    long ts = (date != null) ? date.getTime() : System.currentTimeMillis();
+
+                    return Map.<String, Object>of(
+                            "uid", r.getUserId().toHexString(),
+                            "bid", r.getBook().getId().toHexString(),
+                            "status", status,
+                            "ts", ts
+                    );
+                })
+                .toList();
+
+        String cypher = """
+            UNWIND $batch AS row
+            
+            // Ensure Nodes Exist (Shell Node Pattern)
+            MERGE (r:Reader {mid: row.uid})
+            MERGE (b:Book {mid: row.bid})
+            
+            // Create/Update Relationship
+            MERGE (r)-[rel:ADDED_TO_SHELF]->(b)
+            SET
+                rel.status = row.status,
+                rel.ts = row.ts
+            """;
+
+
+        this.registry.timer("neo4j.ops", "query", "import_reads").record(() -> {
+            try (Session session = this.neo4jManager.getDriver().session()) {
+                session.executeWrite(tx -> {
+                    tx.run(cypher, Values.parameters("batch", batch));
+                    return null;
+                });
+            }
+        });
+    }
+
+
+    /**
      * @param idUser user's id
      * @return list of books in the shelf
      */
@@ -656,7 +762,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idUser)),
-                Updates.pull("shelf", Filters.eq("id", new ObjectId(idBook)))
+                Updates.pull("shelf", Filters.eq("_id", new ObjectId(idBook)))
         );
 
         if(updateResult.getModifiedCount() > 0) {
@@ -708,7 +814,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         Bson filter = Filters.and(
                 Filters.eq("_id", userId),
-                Filters.eq("shelf.book.id", book.getId())
+                Filters.eq("shelf.book._id", book.getId())
         );
 
         var updateStatus = Updates.combine(
@@ -718,7 +824,7 @@ public class UserRepository implements UserRepositoryInterface {
 
         UpdateResult result = this.readerCollection.updateOne(filter, updateStatus);
 
-        if (result.getModifiedCount() == 0) return this.addBookInShelf(idUser, book);
+        if (result.getMatchedCount() == 0) return this.addBookInShelf(idUser, book);
 
         updateShelfStatusNeo4j(idUser, book, newStatus);
 
@@ -832,9 +938,9 @@ public class UserRepository implements UserRepositoryInterface {
         UpdateResult updateResult = this.userCollection.updateOne(
                 Filters.and(
                     Filters.eq("_id", new ObjectId(idUser)),
-                    Filters.elemMatch("reviews", Filters.eq("$id", new ObjectId(idReview)))
+                    Filters.elemMatch("reviews", Filters.eq("$_id", new ObjectId(idReview)))
                 ),
-                Updates.pull("reviews", Filters.eq("$id", new ObjectId(idReview)))
+                Updates.pull("reviews", Filters.eq("$_id", new ObjectId(idReview)))
         );
 
         if(updateResult.getModifiedCount() > 0) {
@@ -913,7 +1019,7 @@ public class UserRepository implements UserRepositoryInterface {
         Bson update = Updates.combine(
                 Updates.pull("notifications", oidNotification),
 
-                Updates.pull("lastNotifications", Filters.eq("id", oidNotification))
+                Updates.pull("lastNotifications", Filters.eq("_id", oidNotification))
         );
 
         UpdateResult result = this.userCollection.updateOne(Filters.eq("_id", oidUser), update);
@@ -947,7 +1053,7 @@ public class UserRepository implements UserRepositoryInterface {
             Bson update = Updates.combine(
                     Updates.pullAll("notifications", notificationIds),
 
-                    Updates.pull("lastNotifications", Filters.in("id", notificationIds))
+                    Updates.pull("lastNotifications", Filters.in("_id", notificationIds))
             );
 
             UpdateResult result = this.userCollection.updateOne(
@@ -1271,10 +1377,17 @@ public class UserRepository implements UserRepositoryInterface {
             logger.debug("[REPOSITORY] [READER] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
 
             List<Reader> readers = this.readerCollection
-                    .find(Filters.gt("_id", lastId))
+                    .find(
+                            Filters.and(
+                                    Filters.gt("_id", lastId),
+                                    Filters.eq("role", Role.Reader.name())
+                            )
+                    )
                     .limit(this.batchSize)
-                    .into(new ArrayList<>()).stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
-                    .toList();
+                    .into(new ArrayList<>())
+                    // .stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
+                    // .toList()
+                    ;
 
             if(readers.isEmpty()) break;
 
@@ -1416,10 +1529,17 @@ public class UserRepository implements UserRepositoryInterface {
             logger.debug("[REPOSITORY] [REVIEWER] [MIGRATE] [MONGODB TO NEO4J] Migrated batch: {} to {}", offset, offset + batchSize);
 
             List<Reviewer> reviewers = this.reviewerCollection
-                    .find(Filters.gt("_id", lastId))
+                    .find(
+                            Filters.and(
+                                    Filters.gt("_id", lastId),
+                                    Filters.eq("role", Role.Reviewer.name())
+                            )
+                    )
                     .limit(this.batchSize)
-                    .into(new ArrayList<>()).stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
-                    .toList();
+                    .into(new ArrayList<>())
+                    // .stream().filter(u -> u.getRole() != null && u.getRole() == Role.Reviewer)
+                    // .toList()
+                    ;
 
             if(reviewers.isEmpty()) break;
 

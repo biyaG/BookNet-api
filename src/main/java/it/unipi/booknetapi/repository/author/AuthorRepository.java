@@ -421,7 +421,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         UpdateResult result = mongoCollection.updateOne(
                 Filters.eq("_id", new ObjectId(idAuthor)),
-                Updates.pull("books", new Document("id", new ObjectId(idBook)))
+                Updates.pull("books", new Document("_id", new ObjectId(idBook)))
         );
 
         return result.getModifiedCount() > 0;
