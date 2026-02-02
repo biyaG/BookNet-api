@@ -245,7 +245,16 @@ public class BookService {
         if(book == null) return false;
 
         BookEmbed bookEmbed = new BookEmbed(book);
-        return this.userRepository.addBookInShelf(command.getUserToken().getIdUser(), bookEmbed);
+        boolean added = this.userRepository.addBookInShelf(command.getUserToken().getIdUser(), bookEmbed);
+
+        if(added) {
+            ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
+            this.userMonthlyStatRepository.addReadEvent(userId, bookEmbed);
+
+            this.logBookActivityInThread(bookEmbed, ActivityType.READ, 0);
+        }
+
+        return added;
     }
 
     public boolean updateBookStatusInShelf(ReaderUpdateBookStatusInShelfCommand command) {
@@ -283,6 +292,8 @@ public class BookService {
             if(isNotCurrentMonth) {
                 ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
                 this.userMonthlyStatRepository.addReadEvent(userId, bookEmbed);
+
+                this.logBookActivityInThread(bookEmbed, ActivityType.READ, 0);
             }
 
             if(status == BookShelfStatus.READING || status == BookShelfStatus.FINISHED) {

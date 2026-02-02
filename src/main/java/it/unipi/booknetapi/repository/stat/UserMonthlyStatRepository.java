@@ -79,6 +79,8 @@ public class UserMonthlyStatRepository implements UserMonthlyStatRepositoryInter
         Objects.requireNonNull(book);
         // Objects.requireNonNull(genres);
 
+        logger.debug("[REPOSITORY] [USER MONTHLY STAT] [ADD READ EVENT] user id: {}, book id: {}", userId.toHexString(), book.getId().toHexString());
+
         LocalDate nowLocal = LocalDate.now();
         int year = nowLocal.getYear();
         int month = nowLocal.getMonthValue();
@@ -94,7 +96,7 @@ public class UserMonthlyStatRepository implements UserMonthlyStatRepositoryInter
         List<Bson> updates = new ArrayList<>();
 
         updates.add(Updates.inc("totalBooksRead", 1));
-        updates.add(Updates.inc("totalPagesRead", book.getNumPage()));
+        updates.add(Updates.inc("totalPagesRead", book.getNumPage() != null ? book.getNumPage() : 0));
 
         if(book.getGenres() != null && !book.getGenres().isEmpty()) {
             for (GenreEmbed genre : book.getGenres()) {

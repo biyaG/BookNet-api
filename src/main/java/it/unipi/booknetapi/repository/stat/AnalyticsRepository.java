@@ -75,6 +75,8 @@ public class AnalyticsRepository implements AnalyticsRepositoryInterface {
     private void upsertStat(ObjectId entityId, String type, String name, Date date, ActivityType activityType, int rating) {
         String compositeId = entityId.toHexString() + "_" + date.toInstant().toString();
 
+        logger.debug("[REPOSITORY] [ACTIVITY STATS] [RECORD ACTIVITY] composite id: {}, type: {}, name: {}, activityType: {}", compositeId, type, name, activityType);
+
         List<Bson> updates = new ArrayList<>();
 
         updates.add(Updates.setOnInsert("entityId", entityId));
@@ -102,6 +104,8 @@ public class AnalyticsRepository implements AnalyticsRepositoryInterface {
 
 
     public List<ChartDataPoint> getChartData(ObjectId entityId, Date start, Date end, String granularity) {
+
+        logger.debug("[REPOSITORY] [ACTIVITY STATS] [CHART DATA] entity id: {}, start date: {}, end date: {}, granularity: {}", entityId, start, end, granularity);
 
         return this.mongoCollection.withDocumentClass(ChartDataPoint.class)
                 .aggregate(Arrays.asList(
