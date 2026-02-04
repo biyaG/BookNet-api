@@ -34,6 +34,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Repository
 public class BookRepository implements BookRepositoryInterface {
@@ -647,6 +648,117 @@ public class BookRepository implements BookRepositoryInterface {
         );
 
         return updateResult.getModifiedCount() > 0;
+    }
+
+    @Override
+    public boolean addReviews(String idBook, List<Review> reviews) {
+        if (idBook == null || !ObjectId.isValid(idBook)) return false;
+        if (reviews == null || reviews.isEmpty()) return false;
+
+        ObjectId bookId = new ObjectId(idBook);
+
+        Book book = this.mongoCollection.find(Filters.eq("_id", bookId)).first();
+        if (book == null) return false;
+
+        ReviewSummary oldSummary = book.getRatingReview();
+
+        if (oldSummary == null) {
+            oldSummary = new ReviewSummary(0f, 0);
+        }
+
+        double oldTotalScore = oldSummary.getRating() * oldSummary.getCount();
+
+        double batchTotalScore = reviews.stream()
+                .mapToDouble(Review::getRating)
+                .sum();
+
+        int batchCount = reviews.size();
+        int newTotalCount = oldSummary.getCount() + batchCount;
+
+        float newAvg = (float) ((oldTotalScore + batchTotalScore) / newTotalCount);
+
+        ReviewSummary updatedSummary = new ReviewSummary(newAvg, newTotalCount);
+
+        List<ObjectId> newReviewIds = reviews.stream()
+                .map(Review::getId)
+                .collect(Collectors.toList());
+
+        UpdateResult result = this.mongoCollection.updateOne(
+                Filters.eq("_id", bookId),
+                Updates.combine(
+                        Updates.set("ratingReview", updatedSummary),
+                        Updates.pushEach("reviews", newReviewIds) // Efficiently appends the whole list
+                )
+        );
+
+        return result.getModifiedCount() > 0;
+    }
+
+    @Override
+    public boolean addReviews(List<Review> reviews) {
+        if (reviews == null || reviews.isEmpty()) return false;
+
+        Map<ObjectId, List<Review>> reviewsByBook = reviews.stream()
+                .filter(r -> r.getBookId() != null)
+                .collect(Collectors.groupingBy(Review::getBookId));
+
+        int totalModified = 0;
+
+        for (Map.Entry<ObjectId, List<Review>> entry : reviewsByBook.entrySet()) {
+            ObjectId bookId = entry.getKey();
+            List<Review> batchReviews = entry.getValue();
+
+            Book book = this.mongoCollection.find(Filters.eq("_id", bookId)).first();
+            if (book == null) continue;
+
+            ReviewSummary oldSummary = book.getRatingReview();
+
+            if (oldSummary == null) {
+                oldSummary = new ReviewSummary(0f, 0);
+            }
+
+            double oldTotalScore = oldSummary.getRating() * oldSummary.getCount();
+            double batchTotalScore = batchReviews.stream().mapToDouble(Review::getRating).sum();
+            int batchCount = batchReviews.size();
+
+            int newTotalCount = oldSummary.getCount() + batchCount;
+            float newAvg = (float) ((oldTotalScore + batchTotalScore) / newTotalCount);
+
+            ReviewSummary updatedSummary = new ReviewSummary(newAvg, newTotalCount);
+
+            List<ObjectId> reviewIds = batchReviews.stream()
+                    .map(Review::getId)
+                    .toList();
+
+            UpdateResult result = this.mongoCollection.updateOne(
+                    Filters.eq("_id", bookId),
+                    Updates.combine(
+                            Updates.set("ratingReview", updatedSummary),
+                            Updates.pushEach("reviews", reviewIds)
+                    )
+            );
+
+            if (result.getModifiedCount() > 0) {
+                totalModified++;
+            }
+        }
+
+        return totalModified > 0;
+    }
+
+    @Override
+    public boolean removeReviews(String idBook, List<ObjectId> reviewsIds) {
+        if (idBook == null || !ObjectId.isValid(idBook)) return false;
+        if (reviewsIds == null || reviewsIds.isEmpty()) return false;
+
+        ObjectId bookId = new ObjectId(idBook);
+
+        UpdateResult result = this.mongoCollection.updateOne(
+                Filters.eq("_id", bookId),
+                Updates.pullAll("reviews", reviewsIds)
+        );
+
+        return result.getModifiedCount() > 0;
     }
 
     @Override

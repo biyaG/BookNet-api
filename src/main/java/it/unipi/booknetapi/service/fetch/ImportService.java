@@ -700,6 +700,7 @@ public class ImportService {
         Map<String, Reviewer> mapExternIdUser = findOrGenerateReviewers(externUserIds);
 
         List<Review> reviews = new ArrayList<>(parameterFetch.getData().size());
+        Map<String, List<Review>> mapBookIdReview = new HashMap<>();
         List<ReviewerRead> reviewersRead = new ArrayList<>(parameterFetch.getData().size());
         for(InteractionGoodReads interactionGoodReads : parameterFetch.getData()) {
             if(mapExternIdBook.containsKey(interactionGoodReads.getBookId()) && mapExternIdUser.containsKey(interactionGoodReads.getUserId())) {
@@ -720,6 +721,9 @@ public class ImportService {
 
                 reviews.add(review);
 
+                if(!mapBookIdReview.containsKey(review.getBookId().toHexString())) mapBookIdReview.put(review.getBookId().toHexString(), new ArrayList<>());
+                mapBookIdReview.get(review.getBookId().toHexString()).add(review);
+
                 ReviewerRead read = ReviewerRead.builder()
                         .userId(mapExternIdUser.get(interactionGoodReads.getUserId()).getId())
                         .book(new BookEmbed(mapExternIdBook.get(interactionGoodReads.getBookId())))
@@ -734,6 +738,9 @@ public class ImportService {
 
         List<Review> reviewsSaved = this.reviewRepository.insertFromGoodReads(reviews);
 
+        // this.bookRepository.addReviews(reviewsSaved);
+        mapBookIdReview.forEach(this.bookRepository::addReviews);
+
         this.userRepository.importGoodReadsReviewsRead(reviewersRead);
 
         logFetch(
@@ -744,6 +751,10 @@ public class ImportService {
                 true,
                 "Successfully processed " + reviews.size() + " reviews."
         );
+
+
+
+
 
         logger.debug("[SERVICE] [IMPORT] [GOOD READS] [REVIEWS] Importing GoodReads reviews completed.");
     }

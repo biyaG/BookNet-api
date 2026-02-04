@@ -29,6 +29,10 @@ public interface BookRepositoryInterface {
     boolean addReview(Review review);
     boolean removeReview(String idBook, String idUser, String idReview);
     List<ObjectId> getReviewsIds(String idBook);
+    boolean addReviews(String idBook, List<Review> reviews);
+    boolean addReviews(List<Review> reviews);
+    boolean removeReviews(String idBook, List<ObjectId> reviewsIds);
+
     boolean updateImage(String idBook, String newImageUrl);
     boolean updatePreview(String idBook, String newPreviewImageUrl);
     boolean deletePreview(String idBook, String deletePreviewImageUrl);
