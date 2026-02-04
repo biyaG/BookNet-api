@@ -248,11 +248,17 @@ public class BookService {
         boolean added = this.userRepository.addBookInShelf(command.getUserToken().getIdUser(), bookEmbed);
 
         if(added) {
-            ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
-            this.userMonthlyStatRepository.addReadEvent(userId, bookEmbed);
+            Runnable task = () -> {
+                ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
+                this.userMonthlyStatRepository.addReadEvent(userId, bookEmbed);
 
-            this.logBookActivityInThread(bookEmbed, ActivityType.READ, 0);
+                this.logBookActivityInThread(bookEmbed, ActivityType.READ, 0);
+            };
+            Thread thread = new Thread(task);
+            thread.start();
         }
+
+
 
         return added;
     }
@@ -285,20 +291,24 @@ public class BookService {
         boolean updated = this.userRepository.updateShelfStatus(command.getUserToken().getIdUser(), bookEmbed, status);
 
         if(updated) {
-            LocalDate updateDate = shelfBook.getDateUpdated().toInstant()
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDate();
-            boolean isNotCurrentMonth = !YearMonth.from(updateDate).equals(YearMonth.now());
-            if(isNotCurrentMonth) {
-                ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
-                this.userMonthlyStatRepository.addReadEvent(userId, bookEmbed);
+            Runnable task = () -> {
+                LocalDate updateDate = shelfBook.getDateUpdated().toInstant()
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate();
+                boolean isNotCurrentMonth = !YearMonth.from(updateDate).equals(YearMonth.now());
+                if(isNotCurrentMonth) {
+                    ObjectId userId = new ObjectId(command.getUserToken().getIdUser());
+                    this.userMonthlyStatRepository.addReadEvent(userId, bookEmbed);
 
-                this.logBookActivityInThread(bookEmbed, ActivityType.READ, 0);
-            }
+                    this.logBookActivityInThread(bookEmbed, ActivityType.READ, 0);
+                }
 
-            if(status == BookShelfStatus.READING || status == BookShelfStatus.FINISHED) {
-                logBookActivity(book, ActivityType.READ, 0);
-            }
+                if(status == BookShelfStatus.READING || status == BookShelfStatus.FINISHED) {
+                    logBookActivity(book, ActivityType.READ, 0);
+                }
+            };
+            Thread thread = new Thread(task);
+            thread.start();
         }
 
         return updated;

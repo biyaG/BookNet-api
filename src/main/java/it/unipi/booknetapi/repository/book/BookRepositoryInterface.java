@@ -28,6 +28,7 @@ public interface BookRepositoryInterface {
     boolean deleteAllBooks(List<ObjectId> idBooks);
     boolean addReview(Review review);
     boolean removeReview(String idBook, String idUser, String idReview);
+    List<ObjectId> getReviewsIds(String idBook);
     boolean updateImage(String idBook, String newImageUrl);
     boolean updatePreview(String idBook, String newPreviewImageUrl);
     boolean deletePreview(String idBook, String deletePreviewImageUrl);
@@ -44,7 +45,7 @@ public interface BookRepositoryInterface {
     PageResult<Book> search(String title, int page, int size);
     Optional<Book> findById(String idBook);
     List<Book> findByTitle(String title);
-    List<Book> searchByTitle(String title);
+    PageResult<Book> searchByTitle(String title, int page, int size);
     List<Book> findByTitle(List<String> titles);
 
     PageResult<BookEmbed> findBooksByGenre(String idGenre, int page, int size);

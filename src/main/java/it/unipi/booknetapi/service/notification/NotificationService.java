@@ -10,6 +10,7 @@ import it.unipi.booknetapi.model.user.User;
 import it.unipi.booknetapi.repository.notification.NotificationRepository;
 import it.unipi.booknetapi.repository.user.UserRepository;
 import it.unipi.booknetapi.shared.model.PageResult;
+import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -39,18 +40,24 @@ public class NotificationService {
     public PageResult<NotificationResponse> get(NotificationGetByUserCommand command) {
         if(command.getIdUser() == null) return null;
 
-        PageResult<Notification> result;
-        if(command.getRead() == null) {
-            result = this.notificationRepository.findAll(command.getIdUser(), command.getPagination().getPage(), command.getPagination().getSize());
-        } else {
-            result = this.notificationRepository.findAll(command.getIdUser(), command.getRead(), command.getPagination().getPage(), command.getPagination().getSize());
-        }
+        List<ObjectId> idNotifications = this.userRepository.getNotificationsIds(command.getIdUser());
+
+        if(idNotifications.isEmpty()) return new PageResult<>(List.of(), 0, command.getPagination().getPage(), command.getPagination().getSize());
+
+        int totalElements = idNotifications.size();
+        int skip = command.getPagination().getPage() * command.getPagination().getSize();
+        if(skip >= totalElements) return new PageResult<>(List.of(), 0, command.getPagination().getPage(), command.getPagination().getSize());
+
+        int limit = Math.min(command.getPagination().getSize(), totalElements - skip);
+        List<ObjectId> idNotificationsPage = idNotifications.subList(skip, skip + limit);
+
+        List<Notification> notifcations = this.notificationRepository.findByOIds(idNotificationsPage);
 
         return new PageResult<>(
-                result.getContent().stream().map(NotificationResponse::new).toList(),
-                result.getTotalElements(),
-                result.getCurrentPage(),
-                result.getPageSize()
+                notifcations.stream().map(NotificationResponse::new).toList(),
+                totalElements,
+                command.getPagination().getPage(),
+                command.getPagination().getSize()
         );
     }
 

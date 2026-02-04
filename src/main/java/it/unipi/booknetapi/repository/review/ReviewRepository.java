@@ -73,25 +73,6 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
         logger.debug("[REPOSITORY] [REVIEW] [INSERT] Inserting review: {}", review);
 
-        if (review.getBookId() == null) {
-            logger.warn("[REPOSITORY] [REVIEW] [INSERT] Review book id is null, cannot insert review: {}", review);
-            return null;
-        }
-
-        if (review.getUser() == null || review.getUser().getId() == null) {
-            logger.warn("[REPOSITORY] [REVIEW] [INSERT] Review user id is null, cannot insert review: {}", review);
-            return null;
-        }
-
-        if (review.getRating() == null) {
-            logger.warn("[REPOSITORY] [REVIEW] [INSERT] Review rating and comment is null, cannot insert review: {}", review);
-            return null;
-        }
-
-        if(review.getDateAdded() == null || review.getDateAdded().after(new Date())) {
-            review.setDateAdded(new Date());
-        }
-
         try (ClientSession mongoSession = this.mongoClient.startSession()) {
 
             mongoSession.startTransaction();
@@ -675,6 +656,10 @@ public class ReviewRepository implements ReviewRepositoryInterface {
     public List<Review> findAll(List<String> idReviews) {
         Objects.requireNonNull(idReviews);
 
+        logger.debug("Find reviews: size: {}", idReviews.size());
+
+        if(idReviews.isEmpty()) return List.of();
+
         List<ObjectId> ids = idReviews.stream()
                 .filter(Objects::nonNull)
                 .filter(ObjectId::isValid)
@@ -683,10 +668,23 @@ public class ReviewRepository implements ReviewRepositoryInterface {
 
         if(ids.isEmpty()) return List.of();
 
-        logger.debug("Find reviews: {}", ids);
+        return findAllByOI(ids);
+    }
+
+    /**
+     * @param idReviews
+     * @return
+     */
+    @Override
+    public List<Review> findAllByOI(List<ObjectId> idReviews) {
+        Objects.requireNonNull(idReviews);
+
+        logger.debug("Find reviews oi: size: {}", idReviews.size());
+
+        if(idReviews.isEmpty()) return List.of();
 
         return this.mongoCollection
-                .find(Filters.in("_id", ids))
+                .find(Filters.in("_id", idReviews))
                 .into(new ArrayList<>());
     }
 

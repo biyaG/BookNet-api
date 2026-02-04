@@ -165,24 +165,51 @@ public class ReviewService {
     }
 
     public PageResult<ReviewResponse> getReviews(ReviewByBookListCommand command) {
-        PageResult<Review> result = this.reviewRepository.findByBook(command.getBookId(), command.getPagination().getPage(), command.getPagination().getSize());
+        if(command.getBookId() == null || !ObjectId.isValid(command.getBookId())) return new PageResult<>(List.of(), 0, command.getPagination().getPage(), command.getPagination().getSize());
+
+        List<ObjectId> idReviews = this.bookRepository.getReviewsIds(command.getBookId());
+
+        if(idReviews.isEmpty()) return new PageResult<>(List.of(), 0, command.getPagination().getPage(), command.getPagination().getSize());
+
+        int totalElements = idReviews.size();
+        int skip = command.getPagination().getPage() * command.getPagination().getSize();
+        if(skip >= totalElements) return new PageResult<>(List.of(), 0, command.getPagination().getPage(), command.getPagination().getSize());
+
+        int limit = Math.min(command.getPagination().getSize(), totalElements - skip);
+        List<ObjectId> idReviewsPage = idReviews.subList(skip, skip + limit);
+
+        List<Review> reviews = this.reviewRepository.findAllByOI(idReviewsPage);
 
         return new PageResult<>(
-                result.getContent().stream().map(ReviewResponse::new).toList(),
-                result.getTotalElements(),
-                result.getCurrentPage(),
-                result.getPageSize()
+                reviews.stream().map(ReviewResponse::new).toList(),
+                totalElements,
+                command.getPagination().getPage(),
+                command.getPagination().getSize()
         );
     }
 
     public PageResult<ReviewResponse> getReviews(ReviewByReaderListCommand command) {
-        PageResult<Review> result = this.reviewRepository.findByReader(command.getReaderId(), command.getPagination().getPage(), command.getPagination().getSize());
+        if(command.getReaderId() == null || !ObjectId.isValid(command.getReaderId())) return new PageResult<>(List.of(), 0, command.getPagination().getPage(), command.getPagination().getSize());
+
+        List<ObjectId> idReviews = this.userRepository.getReviewsIds(command.getReaderId());
+
+        if(idReviews.isEmpty()) return new PageResult<>(List.of(), 0, command.getPagination().getPage(), command.getPagination().getSize());
+
+        int totalElements = idReviews.size();
+
+        int skip = command.getPagination().getPage() * command.getPagination().getSize();
+        if(skip >= totalElements) return new PageResult<>(List.of(), 0, command.getPagination().getPage(), command.getPagination().getSize());
+
+        int limit = Math.min(command.getPagination().getSize(), totalElements - skip);
+        List<ObjectId> idReviewsPage = idReviews.subList(skip, skip + limit);
+
+        List<Review> reviews = this.reviewRepository.findAllByOI(idReviewsPage);
 
         return new PageResult<>(
-                result.getContent().stream().map(ReviewResponse::new).toList(),
-                result.getTotalElements(),
-                result.getCurrentPage(),
-                result.getPageSize()
+                reviews.stream().map(ReviewResponse::new).toList(),
+                totalElements,
+                command.getPagination().getPage(),
+                command.getPagination().getSize()
         );
     }
 

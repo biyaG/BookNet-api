@@ -8,7 +8,6 @@ import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.InsertOneResult;
 import com.mongodb.client.result.UpdateResult;
 import io.micrometer.core.instrument.MeterRegistry;
-import it.unipi.booknetapi.dto.book.BookCsvRecord;
 import it.unipi.booknetapi.dto.book.BookCsvRecordWithAuthor;
 import it.unipi.booknetapi.dto.book.BookGoodReads;
 import it.unipi.booknetapi.model.author.AuthorEmbed;
@@ -34,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Repository
 public class BookRepository implements BookRepositoryInterface {
@@ -663,6 +663,26 @@ public class BookRepository implements BookRepositoryInterface {
         return updateResult.getModifiedCount() > 0;
     }
 
+    /**
+     * @param idBook
+     * @return
+     */
+    @Override
+    public List<ObjectId> getReviewsIds(String idBook) {
+        Objects.requireNonNull(idBook);
+
+        if(!ObjectId.isValid(idBook)) return List.of();
+
+        Book book = this.mongoCollection
+                .find(Filters.eq("_id", new ObjectId(idBook)))
+                .projection(Projections.include("reviews"))
+                .first();
+
+        if(book == null) return List.of();
+
+        return book.getReviews();
+    }
+
     @Override
     public boolean updateImage(String idBook, String newImageUrl) {
         Objects.requireNonNull(idBook);
@@ -1130,22 +1150,26 @@ public class BookRepository implements BookRepositoryInterface {
     }
 
     @Override
-    public List<Book> searchByTitle(String title) {
+    public PageResult<Book> searchByTitle(String title, int page, int size) {
         Objects.requireNonNull(title);
-        if(title.isBlank()) return List.of();
+        logger.debug("[REPOSITORY] [BOOK] [SEARCH] title: {}, page: {}, size: {}", title, page, size);
 
-        /*
-        // Create a regex that matches any of the titles, ignoring case
-        // Pattern: "^(Title1|Title2|Title3)$" with CASE_INSENSITIVE flag
-        String regexPattern = "^(" + String.join("|", titles).replace("?", "\\?") + ")$";
-        Pattern pattern = Pattern.compile(regexPattern, Pattern.CASE_INSENSITIVE);
+        int skip = page * size;
 
-
-        return this.mongoCollection
-                .find(Filters.regex("title", pattern))
+        List<Book> books = this.mongoCollection
+                .find(
+                        Filters.regex("title", Pattern.quote(title), "i")
+                )
+                .skip(skip)
+                .limit(size)
                 .into(new ArrayList<>());
-        */
-        return List.of();
+
+        long total = this.mongoCollection
+                .countDocuments(
+                        Filters.regex("title", Pattern.quote(title), "i")
+                );
+
+        return new PageResult<>(books, total, page, size);
     }
 
     @Override

@@ -972,6 +972,28 @@ public class UserRepository implements UserRepositoryInterface {
     }
 
     /**
+     * @param idUser
+     * @return
+     */
+    @Override
+    public List<ObjectId> getReviewsIds(String idUser) {
+        Objects.requireNonNull(idUser);
+
+        if(!ObjectId.isValid(idUser)) return List.of();
+
+        logger.debug("[REPOSITORY] [USER] [GET REVIEWS IDS] user id: {}", idUser);
+
+        Reader reader = this.readerCollection
+                .find(Filters.eq("_id", new ObjectId(idUser)))
+                .projection(Projections.include("reviews"))
+                .first();
+
+        if(reader == null) return List.of();
+
+        return reader.getReviews();
+    }
+
+    /**
      * @param notification
      * @return
      */
@@ -1066,6 +1088,28 @@ public class UserRepository implements UserRepositoryInterface {
         } catch (IllegalArgumentException e) {
             return false;
         }
+    }
+
+    /**
+     * @param idUser admin's id
+     * @return list of notification ids if this user has notifications or empty list if the user has no notifications or if the user is not an admin
+     */
+    @Override
+    public List<ObjectId> getNotificationsIds(String idUser) {
+        Objects.requireNonNull(idUser);
+
+        if(!ObjectId.isValid(idUser)) return List.of();
+
+        logger.debug("[REPOSITORY] [ADMIN] [GET NOTIFICATION IDS] user id: {}", idUser);
+
+        Admin admin = this.adminCollection
+                .find(Filters.eq("_id", new ObjectId(idUser)))
+                .projection(Projections.include("notifications"))
+                .first();
+
+        if(admin == null) return List.of();
+
+        return admin.getNotifications();
     }
 
     /**

@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Repository
 public class AuthorRepository implements AuthorRepositoryInterface {
@@ -639,13 +640,14 @@ public class AuthorRepository implements AuthorRepositoryInterface {
      */
     @Override
     public PageResult<Author> search(String name, int page, int size) {
-        logger.debug("[REPOSITORY] [AUTHOR] [SEARCH] page: {}, size: {}", page, size);
+        Objects.requireNonNull(name);
+        logger.debug("[REPOSITORY] [AUTHOR] [SEARCH] name: {}, page: {}, size: {}", name, page, size);
 
         int skip = page * size;
 
         List<Author> authors = this.mongoCollection
                 .find(
-                        Filters.regex("name", "^" + name + "$", "i")
+                        Filters.regex("name", Pattern.quote(name), "i")
                 )
                 .skip(skip)
                 .limit(size)
@@ -653,7 +655,7 @@ public class AuthorRepository implements AuthorRepositoryInterface {
 
         long total = this.mongoCollection
                 .countDocuments(
-                        Filters.regex("name", "^" + name + "$", "i")
+                        Filters.regex("name", Pattern.quote(name), "i")
                 );
 
         return new PageResult<>(authors, total, page, size);
