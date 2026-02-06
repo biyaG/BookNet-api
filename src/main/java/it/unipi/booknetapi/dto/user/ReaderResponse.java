@@ -9,7 +9,7 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class ReaderResponse extends InternalUserResponse {
+public class ReaderResponse extends UserResponse {
 
     private List<ReviewResponse> reviews = List.of();
 

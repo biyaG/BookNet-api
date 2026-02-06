@@ -15,12 +15,10 @@ public class UserToken {
 
     public UserToken() {}
 
-    public UserToken(InternalUser user) {
+    public UserToken(User user) {
         this.idUser = user.getId().toHexString();
         this.name = user.getName();
-        if(user instanceof Admin) this.username = user.getUsername();
-        else if (user instanceof Reader) this.username = user.getUsername();
-        else this.username = "";
+        this.username = user.getUsername();
         this.role = user.getRole();
     }
 

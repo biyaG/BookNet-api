@@ -45,7 +45,7 @@ public interface UserRepositoryInterface {
     Optional<User> findById(String idUser);
     Optional<Reader> findReaderById(String idUser);
 
-    Optional<InternalUser> findByUsername(String username);
+    Optional<User> findByUsername(String username);
 
     PageResult<User> findAll(int page, int size);
     PageResult<Admin> findAllAdmin(int page, int size);

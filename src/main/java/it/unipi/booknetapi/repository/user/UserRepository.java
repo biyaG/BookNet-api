@@ -38,7 +38,6 @@ public class UserRepository implements UserRepositoryInterface {
 
     private final MongoClient mongoClient;
     private final MongoCollection<User> userCollection;
-    private final MongoCollection<InternalUser> internalUserCollection;
     private final MongoCollection<Admin> adminCollection;
     private final MongoCollection<Reader> readerCollection;
     private final MongoCollection<Reviewer> reviewerCollection;
@@ -57,7 +56,6 @@ public class UserRepository implements UserRepositoryInterface {
         this.batchSize = appConfig.getBatchSize() != null ? appConfig.getBatchSize() : 50;
         this.mongoClient = mongoClient;
         this.userCollection = mongoDatabase.getCollection("users", User.class);
-        this.internalUserCollection = mongoDatabase.getCollection("users", InternalUser.class);
         this.adminCollection = mongoDatabase.getCollection("users", Admin.class);
         this.readerCollection = mongoDatabase.getCollection("users", Reader.class);
         this.reviewerCollection = mongoDatabase.getCollection("users", Reviewer.class);
@@ -75,9 +73,7 @@ public class UserRepository implements UserRepositoryInterface {
     public <T extends User> T insert(T user) {
         Objects.requireNonNull(user);
 
-        if(user instanceof InternalUser internalUser) {
-            if(internalUser.getDateAdd() == null) internalUser.setDateAdd(new Date());
-        }
+        user.setDateAdd(new Date());
 
         logger.debug("[REPOSITORY] [USER] [INSERT] user: {}", user);
 
@@ -116,9 +112,7 @@ public class UserRepository implements UserRepositoryInterface {
     public <T extends User> T insertWithThread(T user) {
         Objects.requireNonNull(user);
 
-        if(user instanceof InternalUser internalUser) {
-            if(internalUser.getDateAdd() == null) internalUser.setDateAdd(new Date());
-        }
+        user.setDateAdd(new Date());
 
         logger.debug("[REPOSITORY] [USER] [INSERT] user: {}", user);
 
@@ -1274,12 +1268,12 @@ public class UserRepository implements UserRepositoryInterface {
      * @return a user associated with the given username or empty if not found
      */
     @Override
-    public Optional<InternalUser> findByUsername(String username) {
+    public Optional<User> findByUsername(String username) {
         Objects.requireNonNull(username);
 
         logger.debug("[REPOSITORY] [USER] [FIND BY USERNAME] user id: {}", username);
 
-        InternalUser user = this.internalUserCollection
+        User user = this.userCollection
                 .find(Filters.eq("username", username))
                 .first();
 

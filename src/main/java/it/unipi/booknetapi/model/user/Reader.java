@@ -15,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @BsonDiscriminator(key = "role", value = "Reader")
-public class Reader extends InternalUser {
+public class Reader extends User {
 
     private Role role = Role.Reader;
 

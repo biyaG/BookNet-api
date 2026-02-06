@@ -14,7 +14,7 @@ import java.util.List;
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @BsonDiscriminator(key = "role", value = "Admin")
-public class Admin extends InternalUser {
+public class Admin extends User {
 
     private Role role = Role.Admin;
 

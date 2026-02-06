@@ -8,6 +8,8 @@ import org.bson.codecs.pojo.annotations.BsonId;
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 
+import java.util.Date;
+
 @Data
 @SuperBuilder
 @NoArgsConstructor
@@ -23,6 +25,14 @@ public class User {
 
     @NotBlank(message = "Role can not be blank")
     private Role role;
+
+    @NotBlank(message = "UserName can not be blank")
+    private String username;
+
+    @NotBlank(message = "Password can not be blank")
+    private String password;
+
+    private Date dateAdd;
 
     public UserEmbed toEmbed() {
         return new UserEmbed(this);

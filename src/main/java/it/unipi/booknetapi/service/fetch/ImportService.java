@@ -637,6 +637,7 @@ public class ImportService {
         Reviewer reader = new Reviewer();
         reader.setExternalId(externalId);
         reader.setName(faker.name().fullName());
+        reader.setDateAdd(new Date());
 
         reader.setRole(Role.Reviewer);
 
@@ -751,10 +752,6 @@ public class ImportService {
                 true,
                 "Successfully processed " + reviews.size() + " reviews."
         );
-
-
-
-
 
         logger.debug("[SERVICE] [IMPORT] [GOOD READS] [REVIEWS] Importing GoodReads reviews completed.");
     }

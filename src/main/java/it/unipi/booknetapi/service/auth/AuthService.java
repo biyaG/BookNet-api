@@ -90,7 +90,7 @@ public class AuthService {
 
 
     public String login(UserLoginRequest loginRequest) {
-        InternalUser user = userRepository.findByUsername(loginRequest.getUsername())
+        User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElse(null);
         if (user == null || user.getPassword() == null) {
             return null;
@@ -104,7 +104,7 @@ public class AuthService {
     }
 
     public String loginAlt(UserLoginRequest loginRequest) {
-        InternalUser user = userRepository.findByUsername(loginRequest.getUsername())
+        User user = userRepository.findByUsername(loginRequest.getUsername())
                 .orElse(null);
         if (user == null) {
             return null;

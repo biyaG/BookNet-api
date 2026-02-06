@@ -4,7 +4,6 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.jwt.interfaces.JWTVerifier;
-import it.unipi.booknetapi.model.user.InternalUser;
 import it.unipi.booknetapi.model.user.Role;
 import it.unipi.booknetapi.model.user.User;
 import org.springframework.stereotype.Service;
@@ -23,7 +22,7 @@ public class JwtService {
         this.algorithm = Algorithm.RSA256(keyUtils.getPublicKey(), keyUtils.getPrivateKey());
     }
 
-    public String createToken(InternalUser user) {
+    public String createToken(User user) {
         return createToken(new UserToken(user));
     }
 
